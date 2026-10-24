@@ -1,5 +1,6 @@
 package com.vpegs.ms.data
 
+import android.graphics.drawable.Drawable
 import androidx.compose.runtime.Immutable
 
 enum class Protocol(val display: String, val color: Long) {
@@ -38,12 +39,12 @@ data class Subscription(
     val serversCount: Int = 0
 )
 
-@Immutable
 data class AppProxyItem(
     val packageName: String,
     val appName: String,
     val isSystem: Boolean = false,
-    val proxyEnabled: Boolean = true
+    val proxyEnabled: Boolean = true,
+    val icon: Drawable? = null
 )
 
 @Immutable

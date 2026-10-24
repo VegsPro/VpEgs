@@ -3,6 +3,8 @@ package com.vpegs.ms.viewmodel
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.net.VpnService
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,8 +13,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vpegs.ms.data.*
 import com.vpegs.ms.vpn.VpEgsVpnService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class MainViewModel : ViewModel() {
@@ -41,8 +45,21 @@ class MainViewModel : ViewModel() {
     var servers by mutableStateOf(sampleServers())
         private set
 
-    var appProxyList by mutableStateOf(sampleApps())
+    var appProxyList by mutableStateOf<List<AppProxyItem>>(emptyList())
         private set
+    var appsLoading by mutableStateOf(false)
+        private set
+    var appSearch by mutableStateOf("")
+        private set
+
+    val filteredApps: List<AppProxyItem>
+        get() {
+            if (appSearch.isBlank()) return appProxyList
+            val q = appSearch.lowercase()
+            return appProxyList.filter {
+                it.appName.lowercase().contains(q) || it.packageName.lowercase().contains(q)
+            }
+        }
 
     var searchQuery by mutableStateOf("")
         private set
@@ -103,6 +120,13 @@ class MainViewModel : ViewModel() {
                 putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, "${server.flag} ${server.name}")
             }
             ctx.startForegroundService(i)
+            // Sync widget prefs
+            try {
+                ctx.getSharedPreferences("vpegs_widget", Context.MODE_PRIVATE).edit()
+                    .putString("server_name", "${server.flag} ${server.name}")
+                    .putInt("last_ping", server.latencyMs ?: 0)
+                    .apply()
+            } catch (_: Exception) {}
             connState = ConnState.CONNECTED
             startStats()
         }
@@ -259,18 +283,41 @@ class MainViewModel : ViewModel() {
         ServerNode("12", "Dubai", "🇦🇪 ОАЭ", "🇦🇪", Protocol.VLESS_REALITY, 78)
     )
 
-    private fun sampleApps() = listOf(
-        AppProxyItem("com.android.chrome", "Chrome", false, true),
-        AppProxyItem("org.telegram.messenger", "Telegram", false, true),
-        AppProxyItem("com.whatsapp", "WhatsApp", false, false),
-        AppProxyItem("com.instagram.android", "Instagram", false, true),
-        AppProxyItem("com.google.android.youtube", "YouTube", false, true),
-        AppProxyItem("ru.yandex.browser", "Яндекс", false, false),
-        AppProxyItem("com.vkontakte.android", "ВКонтакте", false, false),
-        AppProxyItem("ru.sberbankmobile", "Сбербанк", false, false),
-        AppProxyItem("com.spotify.music", "Spotify", false, true),
-        AppProxyItem("com.discord", "Discord", false, true)
-    )
+    fun updateAppSearch(q: String) { appSearch = q }
+
+    fun loadInstalledApps(context: Context) {
+        if (appProxyList.isNotEmpty() || appsLoading) return
+        appsLoading = true
+        viewModelScope.launch {
+            try {
+                val list = withContext(Dispatchers.IO) {
+                    val pm = context.packageManager
+                    val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                    val enabledMap = appProxyList.associate { it.packageName to it.proxyEnabled }
+                    apps
+                        .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
+                        .map { ai ->
+                            val isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                            val name = try { pm.getApplicationLabel(ai).toString() } catch (_: Exception) { ai.packageName }
+                            val icon = try { pm.getApplicationIcon(ai) } catch (_: Exception) { null }
+                            AppProxyItem(
+                                packageName = ai.packageName,
+                                appName = name,
+                                isSystem = isSystem,
+                                proxyEnabled = enabledMap[ai.packageName] ?: true,
+                                icon = icon
+                            )
+                        }
+                        .sortedWith(compareBy({ it.isSystem }, { it.appName.lowercase() }))
+                }
+                appProxyList = list
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                appsLoading = false
+            }
+        }
+    }
 
     companion object { const val REQ_VPN = 1001 }
 }
