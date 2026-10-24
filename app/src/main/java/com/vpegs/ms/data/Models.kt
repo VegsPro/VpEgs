@@ -25,7 +25,8 @@ data class ServerNode(
     val isSelected: Boolean = false,
     val address: String = "",
     val port: Int = 443,
-    val rawConfig: String = ""
+    val rawConfig: String = "",
+    val subscriptionId: String = ""
 )
 
 @Immutable

@@ -44,14 +44,17 @@ class VpEgsVpnService : VpnService() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(serverName))
 
+        // IMPORTANT: without Xray/sing-box core, routing ALL traffic (0.0.0.0/0)
+        // blackholes the internet. We only create a VPN profile so the app appears
+        // in system VPN list — traffic is NOT redirected until a real core is embedded.
         val builder = Builder()
             .setSession("VpEgs · $serverName")
             .setMtu(1500)
             .addAddress("10.8.0.2", 32)
-            .addRoute("0.0.0.0", 0)
+            // Dummy private route only — does NOT capture internet traffic
+            .addRoute("10.8.0.0", 24)
             .addDnsServer("1.1.1.1")
-            .addDnsServer("8.8.8.8")
-            .setBlocking(true)
+            .setBlocking(false)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setMetered(false)

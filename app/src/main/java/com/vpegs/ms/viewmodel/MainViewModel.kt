@@ -34,15 +34,10 @@ class MainViewModel : ViewModel() {
     var lastPingMs by mutableStateOf<Int?>(null)
         private set
 
-    var subscriptions by mutableStateOf(
-        listOf(
-            Subscription("s1", "Основная", "https://sub.example.com/vpegs", serversCount = 12, autoUpdate = true),
-            Subscription("s2", "Hysteria резерв", "https://hy2.example.com/sub", serversCount = 6, autoUpdate = true)
-        )
-    )
+    var subscriptions by mutableStateOf<List<Subscription>>(emptyList())
         private set
 
-    var servers by mutableStateOf(sampleServers())
+    var servers by mutableStateOf<List<ServerNode>>(emptyList())
         private set
 
     var appProxyList by mutableStateOf<List<AppProxyItem>>(emptyList())
@@ -88,8 +83,8 @@ class MainViewModel : ViewModel() {
         }
 
     init {
-        selectedServer = servers.firstOrNull { it.isSelected } ?: servers.minByOrNull { it.latencyMs ?: 9999 }
-        if (autoUpdateOnLaunch) viewModelScope.launch { delay(600); refreshAll(true) }
+        selectedServer = null
+        // no demo servers — list fills only from user subscriptions
     }
 
     // ——— VPN control ———
@@ -229,22 +224,57 @@ class MainViewModel : ViewModel() {
     fun updateInvertAppProxy(v: Boolean) { invertAppProxy = v }
 
     fun addSubscription(name: String, url: String) {
-        val sub = Subscription(UUID.randomUUID().toString(), name.ifBlank { "Подписка ${subscriptions.size + 1}" }, url, serversCount = (4..14).random())
+        val subId = UUID.randomUUID().toString()
+        val subName = name.ifBlank { "Подписка ${subscriptions.size + 1}" }
+        // Placeholder nodes until real subscription fetch is wired to Xray core.
+        // Count is illustrative; replace with parsed nodes from URL response.
+        val count = (3..8).random()
+        val sub = Subscription(subId, subName, url, serversCount = count, autoUpdate = true)
         subscriptions = subscriptions + sub
-        val extra = (1..sub.serversCount).map { i ->
+        val flags = listOf("🇩🇪" to "Германия", "🇳🇱" to "Нидерланды", "🇫🇮" to "Финляндия", "🇫🇷" to "Франция", "🇺🇸" to "США", "🇬🇧" to "UK", "🇵🇱" to "Польша", "🇸🇬" to "Сингапур")
+        val extra = (1..count).map { i ->
+            val (flag, country) = flags.random()
             ServerNode(
-                UUID.randomUUID().toString(),
-                "${sub.name} #$i",
-                listOf("🇩🇪 Германия", "🇳🇱 Нидерланды", "🇫🇮 Финляндия", "🇫🇷 Франция", "🇺🇸 США").random(),
-                listOf("🇩🇪", "🇳🇱", "🇫🇮", "🇫🇷", "🇺🇸").random(),
-                Protocol.entries.random(),
-                (20..150).random()
+                id = UUID.randomUUID().toString(),
+                name = "$country · $subName",
+                country = "$flag $country",
+                flag = flag,
+                protocol = Protocol.entries.random(),
+                latencyMs = null,
+                subscriptionId = subId
             )
         }
         servers = servers + extra
     }
 
-    fun removeSubscription(id: String) { subscriptions = subscriptions.filter { it.id != id } }
+    fun removeSubscription(id: String) {
+        subscriptions = subscriptions.filter { it.id != id }
+        servers = servers.filter { it.subscriptionId != id }
+        if (selectedServer?.subscriptionId == id) {
+            selectedServer = servers.firstOrNull()
+            servers = servers.map { it.copy(isSelected = it.id == selectedServer?.id) }
+        }
+    }
+
+    /** Servers grouped by subscription for HAPP-like UI */
+    fun serversBySubscription(): List<Pair<Subscription, List<ServerNode>>> {
+        var list = servers
+        if (showOnlyFavorites) list = list.filter { it.isFavorite }
+        if (searchQuery.isNotBlank()) {
+            val q = searchQuery.lowercase()
+            list = list.filter {
+                it.name.lowercase().contains(q) ||
+                it.country.lowercase().contains(q) ||
+                it.protocol.display.lowercase().contains(q)
+            }
+        }
+        return subscriptions.mapNotNull { sub ->
+            val nodes = list.filter { it.subscriptionId == sub.id }
+                .sortedBy { it.latencyMs ?: 9999 }
+            if (nodes.isEmpty() && searchQuery.isNotBlank()) null
+            else sub to nodes
+        }.filter { (_, nodes) -> nodes.isNotEmpty() || searchQuery.isBlank() }
+    }
     fun toggleSubAutoUpdate(id: String) {
         subscriptions = subscriptions.map { if (it.id == id) it.copy(autoUpdate = !it.autoUpdate) else it }
     }
@@ -268,20 +298,6 @@ class MainViewModel : ViewModel() {
         else -> "$bps B/s"
     }
 
-    private fun sampleServers() = listOf(
-        ServerNode("1", "Paris Fast", "🇫🇷 Франция", "🇫🇷", Protocol.VLESS_REALITY, 37, true, true),
-        ServerNode("2", "Frankfurt", "🇩🇪 Германия", "🇩🇪", Protocol.HYSTERIA2, 28, true),
-        ServerNode("3", "Amsterdam", "🇳🇱 Нидерланды", "🇳🇱", Protocol.VLESS, 41),
-        ServerNode("4", "Helsinki", "🇫🇮 Финляндия", "🇫🇮", Protocol.TUIC, 52),
-        ServerNode("5", "London", "🇬🇧 UK", "🇬🇧", Protocol.TROJAN, 48),
-        ServerNode("6", "New York", "🇺🇸 США", "🇺🇸", Protocol.VMESS, 95),
-        ServerNode("7", "Singapore", "🇸🇬 Сингапур", "🇸🇬", Protocol.SHADOWSOCKS, 118),
-        ServerNode("8", "Tokyo", "🇯🇵 Япония", "🇯🇵", Protocol.VLESS_REALITY, 132),
-        ServerNode("9", "Warsaw", "🇵🇱 Польша", "🇵🇱", Protocol.HYSTERIA2, 39),
-        ServerNode("10", "Stockholm", "🇸🇪 Швеция", "🇸🇪", Protocol.VLESS, 44),
-        ServerNode("11", "Istanbul", "🇹🇷 Турция", "🇹🇷", Protocol.TROJAN, 61),
-        ServerNode("12", "Dubai", "🇦🇪 ОАЭ", "🇦🇪", Protocol.VLESS_REALITY, 78)
-    )
 
     fun updateAppSearch(q: String) { appSearch = q }
 
