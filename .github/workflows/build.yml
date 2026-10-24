@@ -18,6 +18,12 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - name: Download Xray libv2ray.aar
+        run: |
+          mkdir -p app/libs
+          curl -L -o app/libs/libv2ray.aar \
+            "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar"
+          ls -lh app/libs/libv2ray.aar
       - run: chmod +x ./gradlew
       - run: ./gradlew assembleDebug --stacktrace --no-daemon
       - uses: actions/upload-artifact@v4

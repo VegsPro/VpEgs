@@ -40,6 +40,10 @@ class MainViewModel : ViewModel() {
     var servers by mutableStateOf<List<ServerNode>>(emptyList())
         private set
 
+    /** serverId -> full Xray config JSON */
+    private val configByServerId = mutableMapOf<String, String>()
+
+
     var appProxyList by mutableStateOf<List<AppProxyItem>>(emptyList())
         private set
     var appsLoading by mutableStateOf(false)
@@ -107,18 +111,25 @@ class MainViewModel : ViewModel() {
 
     private fun connect(ctx: Context) {
         val server = selectedServer ?: return
+        val cfg = configByServerId[server.id]
+        if (cfg.isNullOrBlank()) {
+            // No real config — refuse to blackhole network
+            connState = ConnState.DISCONNECTED
+            return
+        }
         connState = ConnState.CONNECTING
         viewModelScope.launch {
-            delay(900)
+            delay(300)
             val i = Intent(ctx, VpEgsVpnService::class.java).apply {
                 action = VpEgsVpnService.ACTION_CONNECT
                 putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, "${server.flag} ${server.name}")
+                putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
             }
             ctx.startForegroundService(i)
-            // Sync widget prefs
             try {
                 ctx.getSharedPreferences("vpegs_widget", Context.MODE_PRIVATE).edit()
                     .putString("server_name", "${server.flag} ${server.name}")
+                    .putString("config_json", cfg)
                     .putInt("last_ping", server.latencyMs ?: 0)
                     .apply()
             } catch (_: Exception) {}
@@ -226,28 +237,47 @@ class MainViewModel : ViewModel() {
     fun addSubscription(name: String, url: String) {
         val subId = UUID.randomUUID().toString()
         val subName = name.ifBlank { "Подписка ${subscriptions.size + 1}" }
-        // Placeholder nodes until real subscription fetch is wired to Xray core.
-        // Count is illustrative; replace with parsed nodes from URL response.
-        val count = (3..8).random()
-        val sub = Subscription(subId, subName, url, serversCount = count, autoUpdate = true)
+        val sub = Subscription(subId, subName, url, serversCount = 0, autoUpdate = true)
         subscriptions = subscriptions + sub
-        val flags = listOf("🇩🇪" to "Германия", "🇳🇱" to "Нидерланды", "🇫🇮" to "Финляндия", "🇫🇷" to "Франция", "🇺🇸" to "США", "🇬🇧" to "UK", "🇵🇱" to "Польша", "🇸🇬" to "Сингапур")
-        val extra = (1..count).map { i ->
-            val (flag, country) = flags.random()
-            ServerNode(
-                id = UUID.randomUUID().toString(),
-                name = "$country · $subName",
-                country = "$flag $country",
-                flag = flag,
-                protocol = Protocol.entries.random(),
-                latencyMs = null,
-                subscriptionId = subId
-            )
+        // Fetch + parse in background
+        viewModelScope.launch {
+            try {
+                val body = withContext(Dispatchers.IO) { fetchUrl(url) }
+                val list = com.vpegs.ms.core.LinkParser.parseSubscriptionBody(body, subId, subName).toMutableList()
+                if (list.isEmpty()) {
+                    com.vpegs.ms.core.LinkParser.parse(url.trim(), subId)?.let { list.add(it) }
+                }
+                list.forEach { configByServerId[it.node.id] = it.configJson }
+                val nodes = list.map { it.node }
+                servers = servers + nodes
+                subscriptions = subscriptions.map {
+                    if (it.id == subId) it.copy(serversCount = nodes.size, lastUpdated = System.currentTimeMillis()) else it
+                }
+                if (selectedServer == null && nodes.isNotEmpty()) selectServer(nodes.first())
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
-        servers = servers + extra
+    }
+
+    private fun fetchUrl(url: String): String {
+        if (url.startsWith("vless://") || url.startsWith("vmess://") || url.startsWith("trojan://") || url.startsWith("ss://")) {
+            return url
+        }
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val req = okhttp3.Request.Builder().url(url).header("User-Agent", "VpEgs/1.0").build()
+        client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+            return resp.body?.string() ?: ""
+        }
     }
 
     fun removeSubscription(id: String) {
+        val toRemove = servers.filter { it.subscriptionId == id }.map { it.id }
+        toRemove.forEach { configByServerId.remove(it) }
         subscriptions = subscriptions.filter { it.id != id }
         servers = servers.filter { it.subscriptionId != id }
         if (selectedServer?.subscriptionId == id) {

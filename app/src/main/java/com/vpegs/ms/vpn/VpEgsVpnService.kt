@@ -8,111 +8,103 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.vpegs.ms.MainActivity
 import com.vpegs.ms.R
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.concurrent.thread
+import libv2ray.CoreCallbackHandler
+import libv2ray.CoreController
+import libv2ray.Libv2ray
 
-/**
- * System VPN service. Creates TUN interface so VpEgs appears in
- * Android "VPN" list (like Happ / INCY).
- *
- * Note: full Xray/sing-box core would process packets here.
- * This implementation establishes the VPN profile and keeps
- * the interface alive for system integration + UI status.
- */
 class VpEgsVpnService : VpnService() {
 
     private var tunInterface: ParcelFileDescriptor? = null
-    private val running = AtomicBoolean(false)
-    private var worker: Thread? = null
+    private var controller: CoreController? = null
+    private var running = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_CONNECT -> startVpn(intent.getStringExtra(EXTRA_SERVER_NAME) ?: "VpEgs")
+            ACTION_CONNECT -> {
+                val name = intent.getStringExtra(EXTRA_SERVER_NAME) ?: "VpEgs"
+                val config = intent.getStringExtra(EXTRA_CONFIG_JSON)
+                if (config.isNullOrBlank()) {
+                    Log.e(TAG, "No config JSON")
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                startVpn(name, config)
+            }
             ACTION_DISCONNECT -> stopVpn()
         }
         return START_STICKY
     }
 
-    private fun startVpn(serverName: String) {
-        if (running.get()) return
+    private fun startVpn(serverName: String, configJson: String) {
+        if (running) return
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(serverName))
 
-        // IMPORTANT: without Xray/sing-box core, routing ALL traffic (0.0.0.0/0)
-        // blackholes the internet. We only create a VPN profile so the app appears
-        // in system VPN list — traffic is NOT redirected until a real core is embedded.
-        val builder = Builder()
-            .setSession("VpEgs · $serverName")
-            .setMtu(1500)
-            .addAddress("10.8.0.2", 32)
-            // Dummy private route only — does NOT capture internet traffic
-            .addRoute("10.8.0.0", 24)
-            .addDnsServer("1.1.1.1")
-            .setBlocking(false)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            builder.setMetered(false)
-        }
-
         try {
+            val files = filesDir.absolutePath
+            Libv2ray.initCoreEnv(files, files)
+            Libv2ray.touch()
+
+            val builder = Builder()
+                .setSession("VpEgs · $serverName")
+                .setMtu(1500)
+                .addAddress("10.8.0.2", 32)
+                .addRoute("0.0.0.0", 0)
+                .addDnsServer("1.1.1.1")
+                .addDnsServer("8.8.8.8")
+                .setBlocking(true)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                builder.setMetered(false)
+            }
+
             tunInterface = builder.establish()
-            if (tunInterface == null) {
+            val pfd = tunInterface
+            if (pfd == null) {
+                Log.e(TAG, "TUN failed")
                 stopSelf()
                 return
             }
-            running.set(true)
+
+            val cb = object : CoreCallbackHandler {
+                override fun onEmitStatus(l: Long, s: String?): Long {
+                    Log.d(TAG, "status: $s")
+                    return 0
+                }
+                override fun shutdown(): Long = 0
+                override fun startup(): Long = 0
+            }
+            val ctrl = Libv2ray.newCoreController(cb)
+            ctrl.startLoop(configJson, pfd.fd)
+            controller = ctrl
+
+            running = true
             isConnected = true
             currentServerName = serverName
+            currentConfigJson = configJson
             sendBroadcast(Intent(ACTION_STATE_CHANGED).putExtra("connected", true))
-            try {
-                com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this)
-            } catch (_: Exception) {}
-
-            // Keep TUN alive / drain packets (placeholder for core)
-            worker = thread(name = "vpegs-tun") {
-                val fd = tunInterface ?: return@thread
-                val input = FileInputStream(fd.fileDescriptor)
-                val output = FileOutputStream(fd.fileDescriptor)
-                val buffer = ByteBuffer.allocate(32767)
-                while (running.get()) {
-                    try {
-                        val len = input.channel.read(buffer)
-                        if (len > 0) {
-                            buffer.flip()
-                            // In full client: pass to Xray/sing-box engine
-                            buffer.clear()
-                        } else {
-                            Thread.sleep(50)
-                        }
-                    } catch (_: Exception) {
-                        break
-                    }
-                }
-            }
+            try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
+            Log.i(TAG, "Xray OK · ${Libv2ray.checkVersionX()}")
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "startVpn failed", e)
             stopVpn()
         }
     }
 
     private fun stopVpn() {
-        running.set(false)
-        worker?.interrupt()
-        worker = null
+        running = false
+        try { controller?.stopLoop() } catch (_: Exception) {}
+        controller = null
         try { tunInterface?.close() } catch (_: Exception) {}
         tunInterface = null
         isConnected = false
         currentServerName = null
         sendBroadcast(Intent(ACTION_STATE_CHANGED).putExtra("connected", false))
-        try {
-            com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this)
-        } catch (_: Exception) {}
+        try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -124,10 +116,7 @@ class VpEgsVpnService : VpnService() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(
-                CHANNEL_ID, "VpEgs VPN",
-                NotificationManager.IMPORTANCE_LOW
-            )
+            val ch = NotificationChannel(CHANNEL_ID, "VpEgs VPN", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
         }
     }
@@ -139,7 +128,7 @@ class VpEgsVpnService : VpnService() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.vpn_notification_title))
-            .setContentText("$server · ${getString(R.string.vpn_notification_text)}")
+            .setContentText("$server · Xray")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(pi)
             .setOngoing(true)
@@ -147,14 +136,17 @@ class VpEgsVpnService : VpnService() {
     }
 
     companion object {
+        private const val TAG = "VpEgsVpn"
         const val ACTION_CONNECT = "com.vpegs.ms.CONNECT"
         const val ACTION_DISCONNECT = "com.vpegs.ms.DISCONNECT"
         const val ACTION_STATE_CHANGED = "com.vpegs.ms.STATE"
         const val EXTRA_SERVER_NAME = "server_name"
+        const val EXTRA_CONFIG_JSON = "config_json"
         const val CHANNEL_ID = "vpegs_vpn"
         const val NOTIFICATION_ID = 42
 
         @Volatile var isConnected: Boolean = false
         @Volatile var currentServerName: String? = null
+        @Volatile var currentConfigJson: String? = null
     }
 }

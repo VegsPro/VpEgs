@@ -109,10 +109,16 @@ class WidgetActionReceiver : android.content.BroadcastReceiver() {
                 toast(context, "Откройте VpEgs и подключитесь один раз")
             } else {
                 val name = p.getString("server_name", "VpEgs") ?: "VpEgs"
+                val cfg = p.getString("config_json", null)
+                if (cfg.isNullOrBlank()) {
+                    toast(context, "Сначала подключитесь из приложения")
+                    return
+                }
                 context.startForegroundService(
                     Intent(context, VpEgsVpnService::class.java).apply {
                         action = VpEgsVpnService.ACTION_CONNECT
                         putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, name)
+                        putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
                     }
                 )
                 toast(context, "VpEgs включён")
