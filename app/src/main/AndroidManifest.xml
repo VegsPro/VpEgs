@@ -75,5 +75,21 @@
                 <action android:name="com.vpegs.ms.ACTION_TOGGLE" />
             </intent-filter>
         </receiver>
+
+        <!-- Quick Settings tile (шторка: как авиарежим / фонарик) -->
+        <service
+            android:name=".ui.tile.VpEgsTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_foreground"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
     </application>
 </manifest>
+

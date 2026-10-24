@@ -67,6 +67,9 @@ class VpEgsVpnService : VpnService() {
             isConnected = true
             currentServerName = serverName
             sendBroadcast(Intent(ACTION_STATE_CHANGED).putExtra("connected", true))
+            try {
+                com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this)
+            } catch (_: Exception) {}
 
             // Keep TUN alive / drain packets (placeholder for core)
             worker = thread(name = "vpegs-tun") {
@@ -104,6 +107,9 @@ class VpEgsVpnService : VpnService() {
         isConnected = false
         currentServerName = null
         sendBroadcast(Intent(ACTION_STATE_CHANGED).putExtra("connected", false))
+        try {
+            com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this)
+        } catch (_: Exception) {}
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
