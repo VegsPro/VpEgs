@@ -283,7 +283,8 @@ class MainViewModel : ViewModel() {
         // Fetch + parse in background
         viewModelScope.launch {
             try {
-                val body = withContext(Dispatchers.IO) { fetchUrl(url) }
+                val fr = withContext(Dispatchers.IO) { fetchSubscription(url) }
+                val body = fr.body
                 val list = com.vpegs.ms.core.LinkParser.parseSubscriptionBody(body, subId, subName).toMutableList()
                 if (list.isEmpty()) {
                     com.vpegs.ms.core.LinkParser.parse(url.trim(), subId)?.let { list.add(it) }
@@ -292,7 +293,18 @@ class MainViewModel : ViewModel() {
                 val nodes = list.map { it.node }
                 servers = servers + nodes
                 subscriptions = subscriptions.map {
-                    if (it.id == subId) it.copy(serversCount = nodes.size, lastUpdated = System.currentTimeMillis()) else it
+                    if (it.id == subId) it.copy(
+                        name = if (fr.title.isNotBlank()) fr.title else it.name,
+                        serversCount = nodes.size,
+                        lastUpdated = System.currentTimeMillis(),
+                        uploadBytes = fr.upload,
+                        downloadBytes = fr.download,
+                        totalBytes = fr.total,
+                        expireAt = fr.expire,
+                        announce = fr.announce,
+                        webPageUrl = fr.webPage,
+                        updateIntervalHours = fr.updateInterval
+                    ) else it
                 }
                 if (selectedServer == null && nodes.isNotEmpty()) {
                     selectServer(nodes.first())
@@ -305,9 +317,21 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    private fun fetchUrl(url: String): String {
+    data class FetchResult(
+        val body: String,
+        val upload: Long = 0,
+        val download: Long = 0,
+        val total: Long = 0,
+        val expire: Long = 0,
+        val title: String = "",
+        val announce: String = "",
+        val webPage: String = "",
+        val updateInterval: Int = 6
+    )
+
+    private fun fetchSubscription(url: String): FetchResult {
         if (url.startsWith("vless://") || url.startsWith("vmess://") || url.startsWith("trojan://") || url.startsWith("ss://")) {
-            return url
+            return FetchResult(body = url)
         }
         val client = okhttp3.OkHttpClient.Builder()
             .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
@@ -316,7 +340,42 @@ class MainViewModel : ViewModel() {
         val req = okhttp3.Request.Builder().url(url).header("User-Agent", "v2rayNG/1.8.19").build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
-            return resp.body?.string() ?: ""
+            val body = resp.body?.string() ?: ""
+            // subscription-userinfo: upload=; download=; total=; expire=
+            var up = 0L; var down = 0L; var total = 0L; var exp = 0L
+            val ui = resp.header("subscription-userinfo") ?: resp.header("Subscription-Userinfo")
+            if (ui != null) {
+                ui.split(";").forEach { part ->
+                    val kv = part.trim().split("=")
+                    if (kv.size == 2) {
+                        val v = kv[1].trim().toLongOrNull() ?: 0L
+                        when (kv[0].trim().lowercase()) {
+                            "upload" -> up = v
+                            "download" -> down = v
+                            "total" -> total = v
+                            "expire" -> exp = v
+                        }
+                    }
+                }
+            }
+            fun hdr(name: String) = resp.header(name) ?: resp.header(name.lowercase()) ?: ""
+            val titleB64 = hdr("profile-title").removePrefix("base64:")
+            val title = try {
+                if (titleB64.isNotBlank()) String(android.util.Base64.decode(titleB64, android.util.Base64.DEFAULT))
+                else ""
+            } catch (_: Exception) { "" }
+            val announceB64 = hdr("announce").removePrefix("base64:")
+            val announce = try {
+                if (announceB64.isNotBlank() && hdr("announce").startsWith("base64:"))
+                    String(android.util.Base64.decode(announceB64, android.util.Base64.DEFAULT))
+                else hdr("announce")
+            } catch (_: Exception) { hdr("announce") }
+            val interval = hdr("profile-update-interval").toIntOrNull() ?: 6
+            return FetchResult(
+                body = body, upload = up, download = down, total = total, expire = exp,
+                title = title, announce = announce, webPage = hdr("profile-web-page-url"),
+                updateInterval = interval
+            )
         }
     }
 

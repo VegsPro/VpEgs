@@ -23,6 +23,13 @@ object Prefs {
                 .put("autoUpdate", s.autoUpdate)
                 .put("updateIntervalHours", s.updateIntervalHours)
                 .put("serversCount", s.serversCount)
+                .put("uploadBytes", s.uploadBytes)
+                .put("downloadBytes", s.downloadBytes)
+                .put("totalBytes", s.totalBytes)
+                .put("expireAt", s.expireAt)
+                .put("announce", s.announce)
+                .put("supportUrl", s.supportUrl)
+                .put("webPageUrl", s.webPageUrl)
             )
         }
         sp(ctx).edit().putString("subscriptions", arr.toString()).apply()
@@ -41,7 +48,14 @@ object Prefs {
                     lastUpdated = o.optLong("lastUpdated", System.currentTimeMillis()),
                     autoUpdate = o.optBoolean("autoUpdate", true),
                     updateIntervalHours = o.optInt("updateIntervalHours", 6),
-                    serversCount = o.optInt("serversCount", 0)
+                    serversCount = o.optInt("serversCount", 0),
+                    uploadBytes = o.optLong("uploadBytes", 0),
+                    downloadBytes = o.optLong("downloadBytes", 0),
+                    totalBytes = o.optLong("totalBytes", 0),
+                    expireAt = o.optLong("expireAt", 0),
+                    announce = o.optString("announce", ""),
+                    supportUrl = o.optString("supportUrl", ""),
+                    webPageUrl = o.optString("webPageUrl", "")
                 )
             }
         } catch (_: Exception) {

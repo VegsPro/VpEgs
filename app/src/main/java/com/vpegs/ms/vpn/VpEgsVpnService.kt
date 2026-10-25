@@ -13,12 +13,17 @@ import androidx.core.app.NotificationCompat
 import com.vpegs.ms.MainActivity
 import com.vpegs.ms.R
 import com.vpegs.ms.core.TunConfigAdapter
+import hev.htproxy.TProxyService
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
 import java.io.File
 import java.io.FileOutputStream
 
+/**
+ * Xray (SOCKS 127.0.0.1:10808) + hev-socks5-tunnel (TUN → SOCKS).
+ * This is the same architecture as SchnellVPN / many reliable clients.
+ */
 class VpEgsVpnService : VpnService() {
 
     private var tunInterface: ParcelFileDescriptor? = null
@@ -31,11 +36,12 @@ class VpEgsVpnService : VpnService() {
                 val name = intent.getStringExtra(EXTRA_SERVER_NAME) ?: "VpEgs"
                 val config = intent.getStringExtra(EXTRA_CONFIG_JSON)
                 if (config.isNullOrBlank()) {
-                    Log.e(TAG, "No config JSON")
+                    Log.e(TAG, "No config")
+                    broadcast(false)
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                startVpn(name, config)
+                Thread { startVpn(name, config) }.start()
             }
             ACTION_DISCONNECT -> stopVpn()
         }
@@ -43,9 +49,7 @@ class VpEgsVpnService : VpnService() {
     }
 
     private fun startVpn(serverName: String, configJson: String) {
-        if (running) {
-            stopVpnInternal()
-        }
+        if (running) stopVpnInternal()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(serverName))
 
@@ -54,12 +58,24 @@ class VpEgsVpnService : VpnService() {
             val files = filesDir.absolutePath
             Libv2ray.initCoreEnv(files, files)
             Libv2ray.touch()
-            Log.i(TAG, "Xray version: ${Libv2ray.checkVersionX()}")
 
-            // Force all traffic through proxy (fix subscription routing)
             val adapted = TunConfigAdapter.adapt(configJson)
-            Log.d(TAG, "Adapted config length=${adapted.length}")
+            Log.i(TAG, "Xray ${Libv2ray.checkVersionX()} config=${adapted.length}b")
 
+            // 1) Start Xray in SOCKS-only mode (tunFd = 0)
+            val cb = object : CoreCallbackHandler {
+                override fun onEmitStatus(l: Long, s: String?): Long {
+                    Log.d(TAG, "xray: $s"); return 0
+                }
+                override fun shutdown(): Long = 0
+                override fun startup(): Long = 0
+            }
+            val ctrl = Libv2ray.newCoreController(cb)
+            ctrl.startLoop(adapted, 0)
+            controller = ctrl
+            Log.i(TAG, "Xray SOCKS up on 127.0.0.1:10808")
+
+            // 2) Establish system TUN
             val builder = Builder()
                 .setSession("VpEgs · $serverName")
                 .setMtu(1500)
@@ -69,58 +85,74 @@ class VpEgsVpnService : VpnService() {
                 .addDnsServer("8.8.8.8")
                 .setBlocking(true)
 
-            // IPv6 capture if supported (prevents IPv6 leak)
             try {
                 builder.addAddress("fd00:8:8:8::2", 126)
                 builder.addRoute("::", 0)
             } catch (_: Exception) {}
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                builder.setMetered(false)
-            }
-            // Allow Xray itself to reach the internet (bypass VPN) — critical
-            try {
-                builder.addDisallowedApplication(packageName)
-            } catch (_: Exception) {}
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
+            // Xray + hev must bypass VPN or they loop
+            try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
 
             tunInterface = builder.establish()
             val pfd = tunInterface
             if (pfd == null) {
                 Log.e(TAG, "TUN establish failed")
+                stopVpnInternal()
+                broadcast(false)
                 stopSelf()
                 return
             }
 
-            val cb = object : CoreCallbackHandler {
-                override fun onEmitStatus(l: Long, s: String?): Long {
-                    Log.d(TAG, "core: $s")
-                    return 0
-                }
-                override fun shutdown(): Long = 0
-                override fun startup(): Long = 0
+            // 3) hev-socks5-tunnel: TUN fd → local SOCKS
+            val hevConf = File(filesDir, "hev-socks5.yml")
+            hevConf.writeText(
+                """
+                tunnel:
+                  mtu: 1500
+                  ipv4: 10.8.0.2
+                  ipv6: 'fd00:8:8:8::2'
+                socks5:
+                  port: 10808
+                  address: 127.0.0.1
+                  udp: 'udp'
+                misc:
+                  connect-timeout: 10000
+                  tcp-read-write-timeout: 300000
+                  udp-read-write-timeout: 60000
+                """.trimIndent()
+            )
+            val ok = TProxyService.TProxyStartService(hevConf.absolutePath, pfd.fd)
+            if (!ok) {
+                Log.e(TAG, "hev TProxyStartService failed")
+                stopVpnInternal()
+                broadcast(false)
+                stopSelf()
+                return
             }
-            val ctrl = Libv2ray.newCoreController(cb)
-            // fd must stay valid — do NOT detachFd()
-            ctrl.startLoop(adapted, pfd.fd)
-            controller = ctrl
+            Log.i(TAG, "hev-socks5-tunnel started")
 
             running = true
             isConnected = true
             currentServerName = serverName
             currentConfigJson = configJson
-            sendBroadcast(Intent(ACTION_STATE_CHANGED).putExtra("connected", true))
+            broadcast(true)
             try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
-            Log.i(TAG, "VPN+Xray started for $serverName")
         } catch (e: Exception) {
-            Log.e(TAG, "startVpn failed: ${e.message}", e)
-            stopVpn()
+            Log.e(TAG, "startVpn failed", e)
+            stopVpnInternal()
+            broadcast(false)
+            stopSelf()
         }
     }
 
     private fun stopVpnInternal() {
         running = false
+        try { TProxyService.TProxyStopService() } catch (e: Exception) {
+            Log.w(TAG, "hev stop: ${e.message}")
+        }
         try { controller?.stopLoop() } catch (e: Exception) {
-            Log.w(TAG, "stopLoop: ${e.message}")
+            Log.w(TAG, "xray stop: ${e.message}")
         }
         controller = null
         try { tunInterface?.close() } catch (_: Exception) {}
@@ -131,10 +163,14 @@ class VpEgsVpnService : VpnService() {
 
     private fun stopVpn() {
         stopVpnInternal()
-        sendBroadcast(Intent(ACTION_STATE_CHANGED).putExtra("connected", false))
+        broadcast(false)
         try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun broadcast(connected: Boolean) {
+        sendBroadcast(Intent(ACTION_STATE_CHANGED).putExtra("connected", connected))
     }
 
     override fun onDestroy() {
@@ -142,7 +178,6 @@ class VpEgsVpnService : VpnService() {
         super.onDestroy()
     }
 
-    /** Copy geoip/geosite from AAR assets into filesDir for routing rules */
     private fun ensureGeoAssets() {
         for (name in listOf("geoip.dat", "geosite.dat", "geoip-only-cn-private.dat")) {
             val out = File(filesDir, name)
@@ -151,9 +186,8 @@ class VpEgsVpnService : VpnService() {
                 assets.open(name).use { input ->
                     FileOutputStream(out).use { output -> input.copyTo(output) }
                 }
-                Log.i(TAG, "Extracted $name (${out.length()} bytes)")
             } catch (e: Exception) {
-                Log.w(TAG, "Asset $name not available: ${e.message}")
+                Log.w(TAG, "asset $name: ${e.message}")
             }
         }
     }
@@ -172,7 +206,7 @@ class VpEgsVpnService : VpnService() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.vpn_notification_title))
-            .setContentText("$server · Xray")
+            .setContentText("$server · Xray+hev")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(pi)
             .setOngoing(true)

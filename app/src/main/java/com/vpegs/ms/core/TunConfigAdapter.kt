@@ -91,32 +91,21 @@ object TunConfigAdapter {
                 .put("queryStrategy", "UseIPv4")
         )
 
-        // ★ TUN inbound — reads fd from env xray.tun.fd set by StartLoop
+        // SOCKS only — TUN is handled by hev-socks5-tunnel
         val inbounds = JSONArray()
-        inbounds.put(
-            JSONObject()
-                .put("tag", "tun-in")
-                .put("protocol", "tun")
-                .put(
-                    "settings",
-                    JSONObject()
-                        .put("mtu", 1500)
-                )
-                .put(
-                    "sniffing",
-                    JSONObject()
-                        .put("enabled", true)
-                        .put("destOverride", JSONArray().put("http").put("tls").put("quic"))
-                )
-        )
-        // Optional local socks for diagnostics
         inbounds.put(
             JSONObject()
                 .put("tag", "socks-in")
                 .put("port", 10808)
                 .put("listen", "127.0.0.1")
                 .put("protocol", "socks")
-                .put("settings", JSONObject().put("udp", true))
+                .put("settings", JSONObject().put("udp", true).put("auth", "noauth"))
+                .put(
+                    "sniffing",
+                    JSONObject()
+                        .put("enabled", true)
+                        .put("destOverride", JSONArray().put("http").put("tls").put("quic"))
+                )
         )
         out.put("inbounds", inbounds)
         out.put("outbounds", cleaned)

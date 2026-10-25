@@ -37,7 +37,16 @@ data class Subscription(
     val lastUpdated: Long = System.currentTimeMillis(),
     val autoUpdate: Boolean = true,
     val updateIntervalHours: Int = 6,
-    val serversCount: Int = 0
+    val serversCount: Int = 0,
+    /** Traffic from subscription-userinfo header */
+    val uploadBytes: Long = 0,
+    val downloadBytes: Long = 0,
+    val totalBytes: Long = 0,
+    val expireAt: Long = 0, // unix seconds
+    /** Free-form announce lines from provider (HAPP-style) */
+    val announce: String = "",
+    val supportUrl: String = "",
+    val webPageUrl: String = ""
 )
 
 data class AppProxyItem(

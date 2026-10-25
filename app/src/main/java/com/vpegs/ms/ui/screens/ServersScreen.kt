@@ -141,10 +141,23 @@ private fun SubscriptionGroup(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "${nodes.size} серверов · ${fmt.format(Date(sub.lastUpdated))}",
+                    buildString {
+                        append("${nodes.size} серверов")
+                        if (sub.totalBytes > 0) {
+                            val used = sub.uploadBytes + sub.downloadBytes
+                            append(" · ${formatTraffic(used)}/${formatTraffic(sub.totalBytes)}")
+                        }
+                        if (sub.expireAt > 0) {
+                            append(" · до ${fmt.format(Date(sub.expireAt * 1000))}")
+                        }
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = GlassTextMuted
                 )
+                if (sub.announce.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(sub.announce, style = MaterialTheme.typography.labelMedium, color = GlassAccent.copy(0.9f), maxLines = 3)
+                }
                 if (sub.autoUpdate) {
                     Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -239,4 +252,11 @@ private fun RegionRow(
             )
         }
     }
+}
+
+
+private fun formatTraffic(b: Long): String = when {
+    b >= 1_073_741_824 -> "%.1fGB".format(b / 1_073_741_824.0)
+    b >= 1_048_576 -> "%.0fMB".format(b / 1_048_576.0)
+    else -> "$b"
 }
