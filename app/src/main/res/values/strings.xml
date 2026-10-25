@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">VpEgs</string>
     <string name="widget_name">VpEgs Control</string>
-    <string name="tile_label">VpE</string>
+    <string name="tile_label">V</string>
     <string name="vpn_notification_title">VpEgs подключён</string>
     <string name="vpn_notification_text">Защищённое соединение активно</string>
 </resources>

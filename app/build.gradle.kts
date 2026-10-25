@@ -12,8 +12,8 @@ android {
         applicationId = "com.vpegs.ms"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 10
+        versionName = "1.1.0"
         // Only real phone ABIs — cuts APK ~half (drop x86 emulator libs)
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -21,9 +21,22 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    signingConfigs {
+        create("vpegs") {
+            storeFile = file("../keystore/vpegs-debug.jks")
+            storePassword = "vpegsdebug"
+            keyAlias = "vpegs"
+            keyPassword = "vpegsdebug"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("vpegs")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("vpegs")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

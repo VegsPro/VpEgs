@@ -98,11 +98,11 @@ class VpEgsTileService : TileService() {
 
     private fun applyState(tile: Tile, on: Boolean, subtitle: String) {
         tile.state = if (on) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        tile.label = "VpE"
+        tile.label = "V"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             tile.subtitle = subtitle
         }
-        tile.icon = Icon.createWithBitmap(textIcon("VpE", on))
+        tile.icon = Icon.createWithBitmap(textIcon("V", on))
         tile.updateTile()
     }
 
@@ -118,7 +118,7 @@ class VpEgsTileService : TileService() {
         val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             textAlign = Paint.Align.CENTER
-            textSize = 48f
+            textSize = 72f
             typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
         }
         val y = size / 2f - (tp.descent() + tp.ascent()) / 2f
