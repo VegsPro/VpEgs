@@ -17,11 +17,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import java.util.UUID
 
 class MainViewModel : ViewModel() {
 
     var connState by mutableStateOf(ConnState.DISCONNECTED)
+        private set
+    var lastError by mutableStateOf<String?>(null)
         private set
     var selectedServer by mutableStateOf<ServerNode?>(null)
         private set
@@ -152,38 +156,76 @@ class MainViewModel : ViewModel() {
         val server = selectedServer ?: return
         val cfg = configByServerId[server.id]
         if (cfg.isNullOrBlank()) {
-            // No real config — refuse to blackhole network
+            lastError = "Нет конфига у сервера — обнови подписку"
             connState = ConnState.DISCONNECTED
             return
         }
+        lastError = null
         connState = ConnState.CONNECTING
         viewModelScope.launch {
-            delay(300)
-            val i = Intent(ctx, VpEgsVpnService::class.java).apply {
+            val app = ctx.applicationContext
+            val i = Intent(app, VpEgsVpnService::class.java).apply {
                 action = VpEgsVpnService.ACTION_CONNECT
                 putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, "${server.flag} ${server.name}")
                 putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
             }
-            ctx.startForegroundService(i)
+            // Wait for real service result (not optimistic)
+            val ok = suspendCancellableCoroutine<Boolean> { cont ->
+                val filter = android.content.IntentFilter(VpEgsVpnService.ACTION_STATE_CHANGED)
+                val receiver = object : android.content.BroadcastReceiver() {
+                    override fun onReceive(c: Context?, intent: Intent?) {
+                        val connected = intent?.getBooleanExtra("connected", false) == true
+                        val err = intent?.getStringExtra("error")
+                        if (!err.isNullOrBlank()) lastError = err
+                        try { app.unregisterReceiver(this) } catch (_: Exception) {}
+                        if (cont.isActive) cont.resume(connected) {}
+                    }
+                }
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    app.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    @Suppress("UnspecifiedRegisterReceiverFlag")
+                    app.registerReceiver(receiver, filter)
+                }
+                app.startForegroundService(i)
+                cont.invokeOnCancellation {
+                    try { app.unregisterReceiver(receiver) } catch (_: Exception) {}
+                }
+                // timeout 12s
+                viewModelScope.launch {
+                    delay(12_000)
+                    if (cont.isActive) {
+                        try { app.unregisterReceiver(receiver) } catch (_: Exception) {}
+                        lastError = "Таймаут подключения (Xray/hev не ответили)"
+                        cont.resume(false) {}
+                    }
+                }
+            }
             try {
-                ctx.getSharedPreferences("vpegs_widget", Context.MODE_PRIVATE).edit()
+                app.getSharedPreferences("vpegs_widget", Context.MODE_PRIVATE).edit()
                     .putString("server_name", "${server.flag} ${server.name}")
                     .putString("config_json", cfg)
                     .putInt("last_ping", server.latencyMs ?: 0)
                     .apply()
             } catch (_: Exception) {}
-            connState = ConnState.CONNECTED
-            startStats()
+            if (ok && VpEgsVpnService.isConnected) {
+                connState = ConnState.CONNECTED
+                startStats()
+            } else {
+                connState = ConnState.DISCONNECTED
+                if (lastError == null) lastError = "VPN не поднялся — смотри уведомление"
+            }
         }
     }
 
     private fun disconnect(ctx: Context) {
         connState = ConnState.DISCONNECTING
+        lastError = null
         viewModelScope.launch {
-            delay(400)
             ctx.startService(Intent(ctx, VpEgsVpnService::class.java).apply {
                 action = VpEgsVpnService.ACTION_DISCONNECT
             })
+            delay(500)
             connState = ConnState.DISCONNECTED
             stats = ConnectionStats()
         }

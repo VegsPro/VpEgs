@@ -30,7 +30,11 @@ fun HomeScreen(vm: MainViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            when (vm.connState) {
+            if (!vm.lastError.isNullOrBlank()) {
+            Text(vm.lastError!!, color = GlassDanger, style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(8.dp))
+        }
+        when (vm.connState) {
                 ConnState.CONNECTED -> "Подключено"
                 ConnState.CONNECTING -> "Подключение…"
                 ConnState.DISCONNECTING -> "Отключение…"

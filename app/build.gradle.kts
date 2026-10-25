@@ -12,8 +12,8 @@ android {
         applicationId = "com.vpegs.ms"
         minSdk = 29
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.2.1"
+        versionCode = 13
+        versionName = "1.2.2"
         // Only real phone ABIs — cuts APK ~half (drop x86 emulator libs)
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
