@@ -268,7 +268,7 @@ class MainViewModel : ViewModel() {
             .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .build()
-        val req = okhttp3.Request.Builder().url(url).header("User-Agent", "VpEgs/1.0").build()
+        val req = okhttp3.Request.Builder().url(url).header("User-Agent", "v2rayNG/1.8.19").build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
             return resp.body?.string() ?: ""
