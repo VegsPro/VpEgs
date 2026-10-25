@@ -14,6 +14,10 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+        // Only real phone ABIs — cuts APK ~half (drop x86 emulator libs)
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -29,7 +33,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    packaging {
+        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        jniLibs { useLegacyPackaging = true }
+    }
 }
 
 dependencies {
