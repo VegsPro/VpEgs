@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.LaunchedEffect
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -39,6 +40,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             VpEgsTheme {
                 val vm: MainViewModel = viewModel()
+                LaunchedEffect(Unit) { vm.load(applicationContext) }
                 vmRef = vm
                 VpEgsApp(vm)
             }

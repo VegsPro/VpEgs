@@ -86,10 +86,49 @@ class MainViewModel : ViewModel() {
             return list.sortedBy { it.latencyMs ?: 9999 }
         }
 
-    init {
-        selectedServer = null
-        // no demo servers — list fills only from user subscriptions
+    private var appContext: Context? = null
+    private var loaded = false
+
+    /** Call once from UI with applicationContext */
+    fun load(ctx: Context) {
+        if (loaded) return
+        loaded = true
+        appContext = ctx.applicationContext
+        try {
+            subscriptions = Prefs.loadSubscriptions(ctx)
+            servers = Prefs.loadServers(ctx)
+            configByServerId.clear()
+            configByServerId.putAll(Prefs.loadConfigs(ctx))
+            globalProxyMode = Prefs.loadGlobalProxy(ctx)
+            invertAppProxy = Prefs.loadInvertProxy(ctx)
+            autoUpdateOnLaunch = Prefs.loadAutoUpdate(ctx)
+            val selId = Prefs.loadSelectedId(ctx)
+            selectedServer = servers.find { it.id == selId } ?: servers.firstOrNull { it.isSelected }
+            if (selectedServer != null) {
+                servers = servers.map { it.copy(isSelected = it.id == selectedServer!!.id) }
+            }
+            if (VpEgsVpnService.isConnected) {
+                connState = ConnState.CONNECTED
+                startStats()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
+
+    private fun persist() {
+        val ctx = appContext ?: return
+        try {
+            Prefs.saveSubscriptions(ctx, subscriptions)
+            Prefs.saveServers(ctx, servers)
+            Prefs.saveConfigs(ctx, configByServerId.toMap())
+            Prefs.saveSelectedId(ctx, selectedServer?.id)
+            Prefs.saveSettings(ctx, globalProxyMode, invertAppProxy, autoUpdateOnLaunch)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
 
     // ——— VPN control ———
     fun prepareAndToggle(activity: Activity) {
@@ -167,11 +206,13 @@ class MainViewModel : ViewModel() {
     fun selectServer(s: ServerNode) {
         servers = servers.map { it.copy(isSelected = it.id == s.id) }
         selectedServer = s.copy(isSelected = true)
+        persist()
     }
 
     fun toggleFavorite(id: String) {
         servers = servers.map { if (it.id == id) it.copy(isFavorite = !it.isFavorite) else it }
         if (selectedServer?.id == id) selectedServer = selectedServer?.copy(isFavorite = !selectedServer!!.isFavorite)
+        persist()
     }
 
     fun pingCurrent() {
@@ -230,9 +271,9 @@ class MainViewModel : ViewModel() {
 
     fun updateSearch(q: String) { searchQuery = q }
     fun toggleFavoritesFilter() { showOnlyFavorites = !showOnlyFavorites }
-    fun updateAutoUpdateOnLaunch(v: Boolean) { autoUpdateOnLaunch = v }
-    fun updateGlobalProxyMode(v: Boolean) { globalProxyMode = v }
-    fun updateInvertAppProxy(v: Boolean) { invertAppProxy = v }
+    fun updateAutoUpdateOnLaunch(v: Boolean) { autoUpdateOnLaunch = v; persist() }
+    fun updateGlobalProxyMode(v: Boolean) { globalProxyMode = v; persist() }
+    fun updateInvertAppProxy(v: Boolean) { invertAppProxy = v; persist() }
 
     fun addSubscription(name: String, url: String) {
         val subId = UUID.randomUUID().toString()
@@ -253,7 +294,11 @@ class MainViewModel : ViewModel() {
                 subscriptions = subscriptions.map {
                     if (it.id == subId) it.copy(serversCount = nodes.size, lastUpdated = System.currentTimeMillis()) else it
                 }
-                if (selectedServer == null && nodes.isNotEmpty()) selectServer(nodes.first())
+                if (selectedServer == null && nodes.isNotEmpty()) {
+                    selectServer(nodes.first())
+                } else {
+                    persist()
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -284,6 +329,7 @@ class MainViewModel : ViewModel() {
             selectedServer = servers.firstOrNull()
             servers = servers.map { it.copy(isSelected = it.id == selectedServer?.id) }
         }
+        persist()
     }
 
     /** Servers grouped by subscription for HAPP-like UI */
@@ -307,6 +353,7 @@ class MainViewModel : ViewModel() {
     }
     fun toggleSubAutoUpdate(id: String) {
         subscriptions = subscriptions.map { if (it.id == id) it.copy(autoUpdate = !it.autoUpdate) else it }
+        persist()
     }
     fun toggleAppProxy(pkg: String) {
         appProxyList = appProxyList.map { if (it.packageName == pkg) it.copy(proxyEnabled = !it.proxyEnabled) else it }
