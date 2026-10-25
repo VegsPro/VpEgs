@@ -12,9 +12,12 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.vpegs.ms.MainActivity
 import com.vpegs.ms.R
+import com.vpegs.ms.core.TunConfigAdapter
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
+import java.io.File
+import java.io.FileOutputStream
 
 class VpEgsVpnService : VpnService() {
 
@@ -40,46 +43,65 @@ class VpEgsVpnService : VpnService() {
     }
 
     private fun startVpn(serverName: String, configJson: String) {
-        if (running) return
+        if (running) {
+            stopVpnInternal()
+        }
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(serverName))
 
         try {
+            ensureGeoAssets()
             val files = filesDir.absolutePath
             Libv2ray.initCoreEnv(files, files)
             Libv2ray.touch()
+            Log.i(TAG, "Xray version: ${Libv2ray.checkVersionX()}")
+
+            // Force all traffic through proxy (fix subscription routing)
+            val adapted = TunConfigAdapter.adapt(configJson)
+            Log.d(TAG, "Adapted config length=${adapted.length}")
 
             val builder = Builder()
                 .setSession("VpEgs · $serverName")
                 .setMtu(1500)
-                .addAddress("10.8.0.2", 32)
+                .addAddress("10.8.0.2", 30)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
                 .setBlocking(true)
 
+            // IPv6 capture if supported (prevents IPv6 leak)
+            try {
+                builder.addAddress("fd00:8:8:8::2", 126)
+                builder.addRoute("::", 0)
+            } catch (_: Exception) {}
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setMetered(false)
             }
+            // Allow Xray itself to reach the internet (bypass VPN) — critical
+            try {
+                builder.addDisallowedApplication(packageName)
+            } catch (_: Exception) {}
 
             tunInterface = builder.establish()
             val pfd = tunInterface
             if (pfd == null) {
-                Log.e(TAG, "TUN failed")
+                Log.e(TAG, "TUN establish failed")
                 stopSelf()
                 return
             }
 
             val cb = object : CoreCallbackHandler {
                 override fun onEmitStatus(l: Long, s: String?): Long {
-                    Log.d(TAG, "status: $s")
+                    Log.d(TAG, "core: $s")
                     return 0
                 }
                 override fun shutdown(): Long = 0
                 override fun startup(): Long = 0
             }
             val ctrl = Libv2ray.newCoreController(cb)
-            ctrl.startLoop(configJson, pfd.fd)
+            // fd must stay valid — do NOT detachFd()
+            ctrl.startLoop(adapted, pfd.fd)
             controller = ctrl
 
             running = true
@@ -88,21 +110,27 @@ class VpEgsVpnService : VpnService() {
             currentConfigJson = configJson
             sendBroadcast(Intent(ACTION_STATE_CHANGED).putExtra("connected", true))
             try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
-            Log.i(TAG, "Xray OK · ${Libv2ray.checkVersionX()}")
+            Log.i(TAG, "VPN+Xray started for $serverName")
         } catch (e: Exception) {
-            Log.e(TAG, "startVpn failed", e)
+            Log.e(TAG, "startVpn failed: ${e.message}", e)
             stopVpn()
         }
     }
 
-    private fun stopVpn() {
+    private fun stopVpnInternal() {
         running = false
-        try { controller?.stopLoop() } catch (_: Exception) {}
+        try { controller?.stopLoop() } catch (e: Exception) {
+            Log.w(TAG, "stopLoop: ${e.message}")
+        }
         controller = null
         try { tunInterface?.close() } catch (_: Exception) {}
         tunInterface = null
         isConnected = false
         currentServerName = null
+    }
+
+    private fun stopVpn() {
+        stopVpnInternal()
         sendBroadcast(Intent(ACTION_STATE_CHANGED).putExtra("connected", false))
         try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -110,8 +138,24 @@ class VpEgsVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        stopVpn()
+        stopVpnInternal()
         super.onDestroy()
+    }
+
+    /** Copy geoip/geosite from AAR assets into filesDir for routing rules */
+    private fun ensureGeoAssets() {
+        for (name in listOf("geoip.dat", "geosite.dat", "geoip-only-cn-private.dat")) {
+            val out = File(filesDir, name)
+            if (out.exists() && out.length() > 1000) continue
+            try {
+                assets.open(name).use { input ->
+                    FileOutputStream(out).use { output -> input.copyTo(output) }
+                }
+                Log.i(TAG, "Extracted $name (${out.length()} bytes)")
+            } catch (e: Exception) {
+                Log.w(TAG, "Asset $name not available: ${e.message}")
+            }
+        }
     }
 
     private fun createNotificationChannel() {
