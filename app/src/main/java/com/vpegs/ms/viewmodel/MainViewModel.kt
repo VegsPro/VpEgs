@@ -92,7 +92,6 @@ class MainViewModel : ViewModel() {
     var showOnlyFavorites by mutableStateOf(false)
     var serverSort by mutableStateOf(ServerSort.AS_IN_SUB)
         private set
-        private set
     var autoUpdateOnLaunch by mutableStateOf(true)
         private set
     var globalProxyMode by mutableStateOf(true)
