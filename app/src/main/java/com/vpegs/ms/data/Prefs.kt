@@ -170,10 +170,22 @@ object Prefs {
         sp(ctx).getInt("ping_seconds", 5).coerceIn(1, 15)
 
     fun saveBypassPackages(ctx: Context, pkgs: Set<String>) {
-        sp(ctx).edit().putStringSet("bypass_pkgs", HashSet(pkgs)).apply()
+        val copy = HashSet(pkgs)
+        sp(ctx).edit()
+            .putStringSet("bypass_pkgs", copy)
+            .putString("bypass_pkgs_str", copy.sorted().joinToString("\n"))
+            .apply()
     }
-    fun loadBypassPackages(ctx: Context): Set<String> =
-        sp(ctx).getStringSet("bypass_pkgs", emptySet()) ?: emptySet()
+    fun loadBypassPackages(ctx: Context): Set<String> {
+        val fromSet = sp(ctx).getStringSet("bypass_pkgs", null)?.let { HashSet(it) } ?: HashSet()
+        val fromStr = sp(ctx).getString("bypass_pkgs_str", null)
+            ?.split("\n")
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.toSet()
+            ?: emptySet()
+        return if (fromSet.isNotEmpty()) fromSet else HashSet(fromStr)
+    }
 
     fun saveBgUpdate(ctx: Context, enabled: Boolean, hours: Int) {
         sp(ctx).edit().putBoolean("bg_update", enabled).putInt("bg_update_hours", hours.coerceIn(1, 48)).apply()

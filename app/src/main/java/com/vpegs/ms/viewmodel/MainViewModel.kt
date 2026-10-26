@@ -669,14 +669,33 @@ class MainViewModel : ViewModel() {
     }
     fun toggleAppProxy(pkg: String) {
         appProxyList = appProxyList.map { if (it.packageName == pkg) it.copy(proxyEnabled = !it.proxyEnabled) else it }
-        // proxyEnabled=false → bypass VPN when global mode
+        // proxyEnabled=false → bypass VPN
         val bypass = appProxyList.filter { !it.proxyEnabled }.map { it.packageName }.toSet()
-        appContext?.let {
-            Prefs.saveBypassPackages(it, bypass)
-            Prefs.saveSettings(it, globalProxyMode, invertAppProxy, autoUpdateOnLaunch)
+        val ctx = appContext
+        if (ctx != null) {
+            Prefs.saveBypassPackages(ctx, bypass)
+            Prefs.saveSettings(ctx, globalProxyMode, invertAppProxy, autoUpdateOnLaunch)
         }
-        if (connState == ConnState.CONNECTED) {
-            lastError = "Обход изменён — переподключите VPN"
+        // Auto-reconnect so Builder picks new disallow list
+        if (connState == ConnState.CONNECTED || VpEgsVpnService.isConnected) {
+            lastError = "Обход: ${bypass.size} прилож. · переподключение…"
+            viewModelScope.launch {
+                val c = appContext ?: return@launch
+                c.startService(Intent(c, VpEgsVpnService::class.java).apply {
+                    action = VpEgsVpnService.ACTION_DISCONNECT
+                })
+                delay(800)
+                val server = selectedServer ?: return@launch
+                val cfg = configByServerId[server.id] ?: return@launch
+                c.startForegroundService(Intent(c, VpEgsVpnService::class.java).apply {
+                    action = VpEgsVpnService.ACTION_CONNECT
+                    putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, "${server.flag} ${server.name}")
+                    putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
+                })
+                delay(2000)
+                lastError = null
+                refreshPublicIp()
+            }
         }
     }
 

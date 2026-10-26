@@ -141,51 +141,55 @@ class VpEgsVpnService : VpnService() {
                 // Always exclude ourselves so Xray/hev can reach the internet
         try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
 
-        // Per-app routing from prefs (copy StringSet — Android may return mutable weirdness)
         try {
             val sp = getSharedPreferences("vpegs_data", MODE_PRIVATE)
             val global = sp.getBoolean("global_proxy", true)
             val invert = sp.getBoolean("invert_proxy", false)
-            val bypass = HashSet(sp.getStringSet("bypass_pkgs", emptySet()) ?: emptySet())
-            Log.i(TAG, "routing global=$global invert=$invert bypass=$bypass")
+            var bypass = HashSet(sp.getStringSet("bypass_pkgs", emptySet()) ?: emptySet())
+            if (bypass.isEmpty()) {
+                val str = sp.getString("bypass_pkgs_str", null).orEmpty()
+                if (str.isNotBlank()) {
+                    bypass = HashSet(str.split("
+").map { it.trim() }.filter { it.isNotEmpty() })
+                }
+            }
+            // Expand known browser / WebView companion packages
+            val expanded = HashSet<String>()
+            for (pkg in bypass) {
+                expanded.add(pkg)
+                expanded.addAll(relatedPackages(pkg))
+            }
+            Log.i(TAG, "routing global=$global invert=$invert bypass=${expanded.size} $expanded")
 
-            if (global && !invert) {
-                // All through VPN except bypass list
-                bypass.forEach { pkg ->
+            if (!global) {
+                // Only apps NOT in bypass go through VPN (allowed-list)
+                val pm = packageManager
+                val launchable = try {
+                    pm.getInstalledApplications(0)
+                        .map { it.packageName }
+                        .filter { pm.getLaunchIntentForPackage(it) != null }
+                        .toSet()
+                } catch (_: Exception) { emptySet() }
+                val through = launchable - expanded - setOf(packageName)
+                through.forEach { pkg ->
+                    try { builder.addAllowedApplication(pkg) } catch (_: Exception) {}
+                }
+                Log.i(TAG, "allowed-list size=${through.size}")
+            } else if (invert) {
+                // invert: packages in list go through VPN only
+                expanded.forEach { pkg ->
+                    try { builder.addAllowedApplication(pkg) } catch (e: Exception) {
+                        Log.w(TAG, "allow $pkg: ${e.message}")
+                    }
+                }
+            } else {
+                // Default: all through VPN except expanded bypass
+                expanded.forEach { pkg ->
                     try {
                         builder.addDisallowedApplication(pkg)
                         Log.i(TAG, "disallow $pkg")
                     } catch (e: Exception) {
-                        Log.w(TAG, "disallow fail $pkg: ${e.message}")
-                    }
-                }
-            } else if (global && invert) {
-                // Only listed apps through VPN
-                if (bypass.isNotEmpty()) {
-                    bypass.forEach { pkg ->
-                        try {
-                            builder.addAllowedApplication(pkg)
-                            Log.i(TAG, "allow $pkg")
-                        } catch (e: Exception) {
-                            Log.w(TAG, "allow fail $pkg: ${e.message}")
-                        }
-                    }
-                }
-            } else {
-                // Selective: only enabled (proxy) apps — stored inverted in bypass = off apps
-                // When global=false: bypass set = apps that should NOT use VPN... wait:
-                // We store bypass = !proxyEnabled. For selective "only selected through VPN",
-                // selected = proxyEnabled=true = not in bypass. So allow all NOT in bypass... 
-                // Actually with global=false we allow only apps with proxyEnabled=true.
-                val pm = packageManager
-                val all = try {
-                    pm.getInstalledApplications(0).map { it.packageName }.toSet()
-                } catch (_: Exception) { emptySet() }
-                val throughVpn = all - bypass - setOf(packageName)
-                // Using allowed-list mode
-                if (throughVpn.isNotEmpty()) {
-                    throughVpn.take(400).forEach { pkg ->
-                        try { builder.addAllowedApplication(pkg) } catch (_: Exception) {}
+                        Log.w(TAG, "disallow $pkg: ${e.message}")
                     }
                 }
             }
@@ -242,6 +246,30 @@ class VpEgsVpnService : VpnService() {
     private fun portOpen(port: Int): Boolean = try {
         Socket().use { s -> s.connect(InetSocketAddress("127.0.0.1", port), 150); true }
     } catch (_: Exception) { false }
+
+    private fun relatedPackages(pkg: String): List<String> {
+        val map = mapOf(
+            "com.android.chrome" to listOf(
+                "com.chrome.beta", "com.chrome.dev", "com.chrome.canary",
+                "com.google.android.apps.chrome", "com.android.browser"
+            ),
+            "org.mozilla.firefox" to listOf("org.mozilla.firefox_beta", "org.mozilla.fennec_fdroid"),
+            "com.opera.browser" to listOf("com.opera.browser.beta"),
+            "com.sec.android.app.sbrowser" to listOf("com.sec.android.app.sbrowser.beta"),
+            "com.microsoft.emmx" to listOf("com.microsoft.emmx.beta"),
+            "com.brave.browser" to listOf("com.brave.browser_beta")
+        )
+        val out = mutableListOf<String>()
+        map[pkg]?.let { out.addAll(it) }
+        // reverse lookup
+        for ((k, v) in map) {
+            if (pkg in v) {
+                out.add(k)
+                out.addAll(v)
+            }
+        }
+        return out.distinct()
+    }
 
     private fun fail(msg: String) {
         Log.e(TAG, msg)
