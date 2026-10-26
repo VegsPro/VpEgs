@@ -13,12 +13,20 @@ import androidx.core.app.NotificationCompat
 import com.vpegs.ms.MainActivity
 import com.vpegs.ms.R
 import com.vpegs.ms.core.TunConfigAdapter
+import hev.htproxy.TProxyService
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
 import java.io.File
 import java.io.FileOutputStream
+import java.net.InetSocketAddress
+import java.net.Socket
 
+/**
+ * Working path on AndroidLibXrayLite:
+ * 1) Xray opens local SOCKS 127.0.0.1:10808  (startLoop(config, 0) — NO tun inbound)
+ * 2) hev-socks5-tunnel bridges system TUN fd → that SOCKS
+ */
 class VpEgsVpnService : VpnService() {
 
     private var tunInterface: ParcelFileDescriptor? = null
@@ -34,7 +42,6 @@ class VpEgsVpnService : VpnService() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                // Must call startForeground quickly
                 createNotificationChannel()
                 startForeground(NOTIFICATION_ID, buildNotification(name, "запуск…"))
                 Thread({
@@ -68,10 +75,51 @@ class VpEgsVpnService : VpnService() {
             Libv2ray.initCoreEnv(files, files)
             Libv2ray.touch()
         } catch (e: Throwable) {
-            fail("Libv2ray init: ${e.message}")
-            stopSelf(); return
+            fail("Libv2ray init: ${e.message}"); stopSelf(); return
         }
 
+        // 1) Xray SOCKS only (tunFd = 0)
+        val adapted = try {
+            TunConfigAdapter.adapt(configJson)
+        } catch (e: Exception) {
+            fail("adapt: ${e.message}"); stopSelf(); return
+        }
+        Log.i(TAG, "Xray cfg=${adapted.length}")
+
+        val cb = object : CoreCallbackHandler {
+            override fun onEmitStatus(l: Long, s: String?): Long {
+                Log.d(TAG, "xray: $s"); return 0
+            }
+            override fun shutdown(): Long = 0
+            override fun startup(): Long = 0
+        }
+        val ctrl = try {
+            Libv2ray.newCoreController(cb)
+        } catch (e: Throwable) {
+            fail("newCore: ${e.message}"); stopSelf(); return
+        }
+        try {
+            ctrl.startLoop(adapted, 0)
+        } catch (e: Throwable) {
+            Log.e(TAG, "startLoop", e)
+            fail("Xray: ${e.message?.take(120)}")
+            stopSelf(); return
+        }
+        controller = ctrl
+
+        // Wait for SOCKS port
+        var socksReady = false
+        repeat(30) {
+            if (portOpen(10808)) { socksReady = true; return@repeat }
+            Thread.sleep(100)
+        }
+        if (!socksReady) {
+            fail("SOCKS :10808 не открылся")
+            stopVpnInternal(); stopSelf(); return
+        }
+        Log.i(TAG, "SOCKS ready")
+
+        // 2) System TUN
         val builder = Builder()
             .setSession("VpEgs · $serverName")
             .setMtu(1500)
@@ -94,65 +142,52 @@ class VpEgsVpnService : VpnService() {
         val pfd = try {
             builder.establish()
         } catch (e: Exception) {
-            fail("TUN establish: ${e.message}")
-            stopSelf(); return
+            fail("TUN: ${e.message}"); stopVpnInternal(); stopSelf(); return
         }
         if (pfd == null) {
-            fail("TUN = null (закрой другое VPN)")
-            stopSelf(); return
+            fail("TUN=null (закрой другое VPN)")
+            stopVpnInternal(); stopSelf(); return
         }
         tunInterface = pfd
-        val fd = pfd.fd
-        Log.i(TAG, "TUN fd=$fd")
 
-        val adapted = try {
-            TunConfigAdapter.adapt(configJson)
-        } catch (e: Exception) {
-            fail("adapt: ${e.message}")
-            stopVpnInternal(); stopSelf(); return
-        }
-        Log.i(TAG, "Xray ${try { Libv2ray.checkVersionX() } catch (_: Exception) { "?" }} cfg=${adapted.length}")
-
-        val cb = object : CoreCallbackHandler {
-            override fun onEmitStatus(l: Long, s: String?): Long {
-                Log.d(TAG, "xray: $s"); return 0
-            }
-            override fun shutdown(): Long = 0
-            override fun startup(): Long = 0
-        }
-
-        val ctrl = try {
-            Libv2ray.newCoreController(cb)
+        // 3) hev: TUN → SOCKS
+        val hevConf = File(filesDir, "hev.yml")
+        hevConf.writeText(
+            """
+            tunnel:
+              mtu: 1500
+              ipv4: 10.8.0.2
+            socks5:
+              port: 10808
+              address: 127.0.0.1
+              udp: 'udp'
+            misc:
+              connect-timeout: 10000
+            """.trimIndent()
+        )
+        val hevOk = try {
+            TProxyService.TProxyStartService(hevConf.absolutePath, pfd.fd)
         } catch (e: Throwable) {
-            fail("newCoreController: ${e.message}")
+            Log.e(TAG, "hev", e)
+            false
+        }
+        if (!hevOk) {
+            fail("hev-tunnel не стартовал")
             stopVpnInternal(); stopSelf(); return
         }
 
-        try {
-            // Pass TUN fd — lib sets xray.tun.fd; config has protocol:tun inbound
-            ctrl.startLoop(adapted, fd)
-        } catch (e: Throwable) {
-            Log.e(TAG, "startLoop", e)
-            fail("Xray startLoop: ${e.message?.take(100)}")
-            stopVpnInternal(); stopSelf(); return
-        }
-
-        // Confirm core thinks it's running
-        val running = try { ctrl.getIsRunning() } catch (_: Exception) { true }
-        if (!running) {
-            fail("Xray IsRunning=false")
-            stopVpnInternal(); stopSelf(); return
-        }
-
-        controller = ctrl
         isConnected = true
         lastError = null
         currentServerName = serverName
         currentConfigJson = configJson
-        startForeground(NOTIFICATION_ID, buildNotification(serverName, "Xray TUN"))
-        Log.i(TAG, "VPN UP")
+        startForeground(NOTIFICATION_ID, buildNotification(serverName, "Xray+hev"))
+        Log.i(TAG, "VPN UP (socks+hev)")
         try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
     }
+
+    private fun portOpen(port: Int): Boolean = try {
+        Socket().use { s -> s.connect(InetSocketAddress("127.0.0.1", port), 150); true }
+    } catch (_: Exception) { false }
 
     private fun fail(msg: String) {
         Log.e(TAG, msg)
@@ -161,6 +196,7 @@ class VpEgsVpnService : VpnService() {
     }
 
     private fun stopVpnInternal() {
+        try { TProxyService.TProxyStopService() } catch (_: Exception) {}
         try { controller?.stopLoop() } catch (_: Exception) {}
         controller = null
         try { tunInterface?.close() } catch (_: Exception) {}

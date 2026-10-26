@@ -18,11 +18,13 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
-      - name: Download Xray libv2ray.aar
+      - name: Download native libs
         run: |
           mkdir -p app/libs
           curl -L -o app/libs/libv2ray.aar \
             "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar"
+          curl -L -o app/libs/hev-socks5-tunnel.aar \
+            "https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar"
           ls -lh app/libs/
       - run: chmod +x ./gradlew
       - run: ./gradlew assembleDebug --stacktrace --no-daemon

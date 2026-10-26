@@ -4,8 +4,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Minimal Xray config for Android VpnService + TUN inbound.
- * Libv2ray StartLoop sets env xray.tun.fd; Xray tun inbound reads that FD.
+ * SOCKS-only config for Xray. TUN is handled by hev-socks5-tunnel.
+ * AndroidLibXrayLite build does NOT support protocol "tun" inbound
+ * (fails: "failed to build inbound").
  */
 object TunConfigAdapter {
 
@@ -59,27 +60,28 @@ object TunConfigAdapter {
                 .put("servers", JSONArray().put("1.1.1.1").put("8.8.8.8"))
                 .put("queryStrategy", "UseIPv4")
         )
-
-        // TUN inbound — requires xray.tun.fd / XRAY_TUN_FD set by StartLoop
-        val inbounds = JSONArray()
-        inbounds.put(
-            JSONObject()
-                .put("tag", "tun-in")
-                .put("protocol", "tun")
-                .put(
-                    "settings",
-                    JSONObject()
-                        .put("mtu", 1500)
-                )
-                .put(
-                    "sniffing",
-                    JSONObject()
-                        .put("enabled", true)
-                        .put("destOverride", JSONArray().put("http").put("tls").put("quic"))
-                        .put("routeOnly", false)
-                )
+        out.put(
+            "inbounds",
+            JSONArray().put(
+                JSONObject()
+                    .put("tag", "socks-in")
+                    .put("port", 10808)
+                    .put("listen", "127.0.0.1")
+                    .put("protocol", "socks")
+                    .put(
+                        "settings",
+                        JSONObject()
+                            .put("udp", true)
+                            .put("auth", "noauth")
+                    )
+                    .put(
+                        "sniffing",
+                        JSONObject()
+                            .put("enabled", true)
+                            .put("destOverride", JSONArray().put("http").put("tls").put("quic"))
+                    )
+            )
         )
-        out.put("inbounds", inbounds)
         out.put("outbounds", cleaned)
 
         val rules = JSONArray()
