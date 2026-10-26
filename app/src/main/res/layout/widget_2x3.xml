@@ -2,10 +2,11 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:orientation="vertical"
+    android:background="@drawable/widget_bg"
     android:padding="8dp"
-    android:background="@drawable/widget_bg">
+    android:gravity="center_vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -17,13 +18,13 @@
             android:id="@+id/btn_toggle"
             android:clickable="true"
             android:focusable="true"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:background="@drawable/widget_btn_circle">
             <ImageView
                 android:id="@+id/icon_power"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:layout_gravity="center"
                 android:src="@android:drawable/ic_media_play"
                 android:tint="#22C55E" />
@@ -39,8 +40,8 @@
                 android:id="@+id/txt_country"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#E0F2FE"
-                android:textSize="12sp"
+                android:textColor="#F1F5F9"
+                android:textSize="13sp"
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:ellipsize="end" />
@@ -49,18 +50,18 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="#7DD3FC"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:maxLines="1" />
         </LinearLayout>
 
-        <ImageView android:id="@+id/btn_ping" android:layout_width="30dp" android:layout_height="30dp"
-            android:padding="5dp" android:clickable="true" android:focusable="true"
+        <ImageView android:id="@+id/btn_ping" android:layout_width="34dp" android:layout_height="34dp"
+            android:padding="6dp" android:clickable="true" android:focusable="true"
             android:src="@android:drawable/ic_menu_recent_history" android:background="@drawable/widget_btn_small" android:tint="#E0F2FE" />
-        <ImageView android:id="@+id/btn_refresh" android:layout_width="30dp" android:layout_height="30dp"
-            android:layout_marginStart="2dp" android:padding="5dp" android:clickable="true" android:focusable="true"
+        <ImageView android:id="@+id/btn_refresh" android:layout_width="34dp" android:layout_height="34dp"
+            android:layout_marginStart="2dp" android:padding="6dp" android:clickable="true" android:focusable="true"
             android:src="@android:drawable/ic_popup_sync" android:background="@drawable/widget_btn_small" android:tint="#E0F2FE" />
-        <ImageView android:id="@+id/btn_best" android:layout_width="30dp" android:layout_height="30dp"
-            android:layout_marginStart="2dp" android:padding="5dp" android:clickable="true" android:focusable="true"
+        <ImageView android:id="@+id/btn_best" android:layout_width="34dp" android:layout_height="34dp"
+            android:layout_marginStart="2dp" android:padding="6dp" android:clickable="true" android:focusable="true"
             android:src="@android:drawable/ic_menu_sort_by_size" android:background="@drawable/widget_btn_small" android:tint="#38BDF8" />
     </LinearLayout>
 
@@ -68,7 +69,7 @@
         android:id="@+id/txt_ip"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="6dp"
         android:text="IP: —"
         android:textColor="#94A3B8"
         android:textSize="11sp"

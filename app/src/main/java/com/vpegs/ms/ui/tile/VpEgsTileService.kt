@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.Icon
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.service.quicksettings.Tile
@@ -14,12 +16,8 @@ import android.service.quicksettings.TileService
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import com.vpegs.ms.MainActivity
-import com.vpegs.ms.R
 import com.vpegs.ms.vpn.VpEgsVpnService
 
-/**
- * Quick Settings tile. Label/icon: "VpE"
- */
 @RequiresApi(Build.VERSION_CODES.N)
 class VpEgsTileService : TileService() {
 
@@ -31,18 +29,19 @@ class VpEgsTileService : TileService() {
     override fun onClick() {
         super.onClick()
         val tile = qsTile ?: return
-
-        if (VpEgsVpnService.isConnected) {
+        // Re-check real state before toggle
+        val on = isVpnReallyOn()
+        if (on) {
             startService(Intent(this, VpEgsVpnService::class.java).apply {
                 action = VpEgsVpnService.ACTION_DISCONNECT
             })
-            applyState(tile, false, "Выкл")
+            VpEgsVpnService.isConnected = false
+            applyState(tile, false)
         } else {
             val prepare = VpnService.prepare(this)
             if (prepare != null) {
                 val open = Intent(this, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    .putExtra("from_tile", true)
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                         startActivityAndCollapse(open)
@@ -63,51 +62,55 @@ class VpEgsTileService : TileService() {
                     ?: VpEgsVpnService.currentConfigJson
                 if (cfg.isNullOrBlank()) {
                     toast("Сначала выберите сервер в приложении")
-                    val open = Intent(this, MainActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            startActivityAndCollapse(open)
-                        } else {
-                            @Suppress("DEPRECATION")
-                            startActivityAndCollapse(open)
-                        }
-                    } catch (_: Exception) {
-                        startActivity(open)
-                    }
-                    return
+                    startActivity(
+                        Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } else {
+                    startForegroundService(Intent(this, VpEgsVpnService::class.java).apply {
+                        action = VpEgsVpnService.ACTION_CONNECT
+                        putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, name)
+                        putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
+                    })
+                    applyState(tile, true)
                 }
-                startForegroundService(Intent(this, VpEgsVpnService::class.java).apply {
-                    action = VpEgsVpnService.ACTION_CONNECT
-                    putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, name)
-                    putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
-                })
-                applyState(tile, true, name.take(16))
             }
         }
     }
 
     private fun refreshTile() {
         val tile = qsTile ?: return
-        val on = VpEgsVpnService.isConnected
-        applyState(
-            tile,
-            on,
-            if (on) (VpEgsVpnService.currentServerName?.take(16) ?: "Вкл") else "Выкл"
-        )
+        applyState(tile, isVpnReallyOn())
     }
 
-    private fun applyState(tile: Tile, on: Boolean, subtitle: String) {
+    /** Prefer process flag; also check system TRANSPORT_VPN so tile can't stay "on" when dead */
+    private fun isVpnReallyOn(): Boolean {
+        if (!VpEgsVpnService.isConnected) {
+            // Clear stale look if system has no VPN
+            return false
+        }
+        // Double-check system still has a VPN network
+        return try {
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            cm.allNetworks.any { n ->
+                cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+            }
+        } catch (_: Exception) {
+            VpEgsVpnService.isConnected
+        }
+    }
+
+    private fun applyState(tile: Tile, on: Boolean) {
         tile.state = if (on) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         tile.label = "V"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.subtitle = subtitle
+            tile.subtitle = if (on) {
+                VpEgsVpnService.currentServerName?.take(18) ?: "Вкл"
+            } else {
+                "Выкл"
+            }
         }
-        tile.icon = try {
-            Icon.createWithResource(this, R.drawable.ic_tile_v)
-        } catch (_: Exception) {
-            Icon.createWithBitmap(textIcon("V", on))
-        }
+        // Different icon colors for on/off — resource is static, use bitmap
+        tile.icon = Icon.createWithBitmap(textIcon("V", on))
         tile.updateTile()
     }
 
@@ -116,7 +119,7 @@ class VpEgsTileService : TileService() {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (active) Color.parseColor("#0EA5E9") else Color.parseColor("#1E293B")
+            color = if (active) Color.parseColor("#0EA5E9") else Color.parseColor("#334155")
             style = Paint.Style.FILL
         }
         c.drawRoundRect(0f, 0f, size.toFloat(), size.toFloat(), 28f, 28f, bg)
@@ -132,14 +135,9 @@ class VpEgsTileService : TileService() {
     }
 
     private fun toast(msg: String) {
-        HandlerMain.post {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
             Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private object HandlerMain {
-        private val h = android.os.Handler(android.os.Looper.getMainLooper())
-        fun post(r: () -> Unit) = h.post(r)
     }
 
     companion object {

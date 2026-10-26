@@ -60,6 +60,7 @@ class VpEgsVpnService : VpnService() {
                 stopVpnInternal()
                 isConnected = false
                 lastError = null
+                try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -237,7 +238,11 @@ class VpEgsVpnService : VpnService() {
         lastError = null
         currentServerName = serverName
         currentConfigJson = configJson
-        startForeground(NOTIFICATION_ID, buildNotification(serverName, "Xray+hev"))
+        val bypassCount = try {
+            val sp = getSharedPreferences("vpegs_data", MODE_PRIVATE)
+            (sp.getStringSet("bypass_pkgs", emptySet()) ?: emptySet()).size
+        } catch (_: Exception) { 0 }
+        startForeground(NOTIFICATION_ID, buildNotification(serverName, "обход:$bypassCount"))
         Log.i(TAG, "VPN UP (socks+hev)")
         try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
     }

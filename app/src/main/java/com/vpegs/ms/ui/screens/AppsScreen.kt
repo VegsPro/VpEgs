@@ -152,6 +152,12 @@ private fun AppRow(app: AppProxyItem, onToggle: () -> Unit) {
                     maxLines = 1
                 )
             }
+            Text(
+                if (app.proxyEnabled) "VPN" else "Напрямую",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (app.proxyEnabled) GlassAccent else GlassTextMuted
+            )
+            Spacer(Modifier.width(6.dp))
             Switch(
                 checked = app.proxyEnabled,
                 onCheckedChange = { onToggle() },
