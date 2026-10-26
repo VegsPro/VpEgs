@@ -38,6 +38,7 @@ fun ServersScreen(vm: MainViewModel) {
         vm.serversBySubscription()
     }
     val expandedIds = remember { mutableStateOf(vm.subscriptions.map { it.id }.toSet()) }
+    var sortMenu by remember { mutableStateOf(false) }
 
     // Expand newly added subscriptions
     LaunchedEffect(vm.subscriptions.map { it.id }) {
@@ -64,6 +65,29 @@ fun ServersScreen(vm: MainViewModel) {
             )
         )
 
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Сортировка", color = GlassTextMuted, style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(8.dp))
+            Box {
+                AssistChip(
+                    onClick = { sortMenu = true },
+                    label = { Text(vm.serverSort.title) },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = GlassSurfaceHigh,
+                        labelColor = GlassPrimary
+                    )
+                )
+                DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                    com.vpegs.ms.viewmodel.ServerSort.entries.forEach { s ->
+                        DropdownMenuItem(
+                            text = { Text(s.title, color = GlassText) },
+                            onClick = { vm.updateServerSort(s); sortMenu = false }
+                        )
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(12.dp))
 
         if (vm.subscriptions.isEmpty()) {
