@@ -29,12 +29,12 @@ fun HomeScreen(vm: MainViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 8.dp, bottom = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            if (!vm.lastError.isNullOrBlank()) {
+        if (!vm.lastError.isNullOrBlank()) {
             Text(vm.lastError!!, color = GlassDanger, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(8.dp))
         }
-        when (vm.connState) {
+        Text(
+            when (vm.connState) {
                 ConnState.CONNECTED -> "Подключено"
                 ConnState.CONNECTING -> "Подключение…"
                 ConnState.DISCONNECTING -> "Отключение…"

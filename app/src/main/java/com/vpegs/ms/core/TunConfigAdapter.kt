@@ -4,11 +4,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Minimal TUN-capable Xray config.
- *
- * CRITICAL: AndroidLibXrayLite only sets env xray.tun.fd — the JSON MUST
- * contain an inbound with protocol "tun" so Xray actually reads the VPN fd.
- * Without it, the system VPN is up but traffic never enters the proxy → same IP.
+ * Minimal Xray config for Android VpnService + TUN inbound.
+ * Libv2ray StartLoop sets env xray.tun.fd; Xray tun inbound reads that FD.
  */
 object TunConfigAdapter {
 
@@ -23,36 +20,9 @@ object TunConfigAdapter {
         if (srcOutbounds.length() == 0) return rawJson
 
         val supported = setOf("vless", "vmess", "trojan", "shadowsocks")
-        val kept = JSONArray()
-        var primaryTag = "proxy"
-
-        for (i in 0 until srcOutbounds.length()) {
-            val o = srcOutbounds.optJSONObject(i) ?: continue
-            val tag = o.optString("tag")
-            val proto = o.optString("protocol").lowercase()
-            if (proto !in supported) continue
-            val copy = JSONObject(o.toString())
-            // Normalize first/main outbound to tag "proxy"
-            if (kept.length() == 0 || tag == "proxy") {
-                copy.put("tag", "proxy")
-                primaryTag = "proxy"
-                if (tag == "proxy" && kept.length() > 0) {
-                    // replace earlier placeholder
-                    kept.put(0, copy)
-                    continue
-                }
-            }
-            if (kept.length() == 0 || tag == "proxy") {
-                if (kept.length() == 0) kept.put(copy)
-                else if (tag == "proxy") { /* already replaced */ }
-            } else {
-                kept.put(copy)
-            }
-        }
-
-        // Simpler collection
         val cleaned = JSONArray()
         var foundProxy = false
+
         for (i in 0 until srcOutbounds.length()) {
             val o = srcOutbounds.optJSONObject(i) ?: continue
             val tag = o.optString("tag")
@@ -68,7 +38,6 @@ object TunConfigAdapter {
             }
         }
         if (cleaned.length() == 0) {
-            // last resort: first outbound
             val o = srcOutbounds.optJSONObject(0) ?: return rawJson
             val copy = JSONObject(o.toString())
             copy.put("tag", "proxy")
@@ -91,20 +60,23 @@ object TunConfigAdapter {
                 .put("queryStrategy", "UseIPv4")
         )
 
-        // SOCKS only — TUN is handled by hev-socks5-tunnel
+        // TUN inbound — requires xray.tun.fd / XRAY_TUN_FD set by StartLoop
         val inbounds = JSONArray()
         inbounds.put(
             JSONObject()
-                .put("tag", "socks-in")
-                .put("port", 10808)
-                .put("listen", "127.0.0.1")
-                .put("protocol", "socks")
-                .put("settings", JSONObject().put("udp", true).put("auth", "noauth"))
+                .put("tag", "tun-in")
+                .put("protocol", "tun")
+                .put(
+                    "settings",
+                    JSONObject()
+                        .put("mtu", 1500)
+                )
                 .put(
                     "sniffing",
                     JSONObject()
                         .put("enabled", true)
                         .put("destOverride", JSONArray().put("http").put("tls").put("quic"))
+                        .put("routeOnly", false)
                 )
         )
         out.put("inbounds", inbounds)
