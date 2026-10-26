@@ -1,11 +1,6 @@
 package com.vpegs.ms.ui.tile
 
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -16,6 +11,7 @@ import android.service.quicksettings.TileService
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import com.vpegs.ms.MainActivity
+import com.vpegs.ms.R
 import com.vpegs.ms.vpn.VpEgsVpnService
 
 @RequiresApi(Build.VERSION_CODES.N)
@@ -29,7 +25,6 @@ class VpEgsTileService : TileService() {
     override fun onClick() {
         super.onClick()
         val tile = qsTile ?: return
-        // Re-check real state before toggle
         val on = isVpnReallyOn()
         if (on) {
             startService(Intent(this, VpEgsVpnService::class.java).apply {
@@ -82,13 +77,8 @@ class VpEgsTileService : TileService() {
         applyState(tile, isVpnReallyOn())
     }
 
-    /** Prefer process flag; also check system TRANSPORT_VPN so tile can't stay "on" when dead */
     private fun isVpnReallyOn(): Boolean {
-        if (!VpEgsVpnService.isConnected) {
-            // Clear stale look if system has no VPN
-            return false
-        }
-        // Double-check system still has a VPN network
+        if (!VpEgsVpnService.isConnected) return false
         return try {
             val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
             cm.allNetworks.any { n ->
@@ -109,29 +99,9 @@ class VpEgsTileService : TileService() {
                 "Выкл"
             }
         }
-        // Different icon colors for on/off — resource is static, use bitmap
-        tile.icon = Icon.createWithBitmap(textIcon("V", on))
+        // Transparent "V" — system draws the circular QS background
+        tile.icon = Icon.createWithResource(this, R.drawable.ic_tile_v)
         tile.updateTile()
-    }
-
-    private fun textIcon(text: String, active: Boolean): Bitmap {
-        val size = 128
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
-        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (active) Color.parseColor("#0EA5E9") else Color.parseColor("#334155")
-            style = Paint.Style.FILL
-        }
-        c.drawRoundRect(0f, 0f, size.toFloat(), size.toFloat(), 28f, 28f, bg)
-        val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textAlign = Paint.Align.CENTER
-            textSize = 72f
-            typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
-        }
-        val y = size / 2f - (tp.descent() + tp.ascent()) / 2f
-        c.drawText(text, size / 2f, y, tp)
-        return bmp
     }
 
     private fun toast(msg: String) {
