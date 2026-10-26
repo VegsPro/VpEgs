@@ -78,8 +78,8 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     data object Home : Screen("home", "Главная", Icons.Filled.Home)
     data object Servers : Screen("servers", "Серверы", Icons.Outlined.Dns)
     data object Subs : Screen("subs", "Подписки", Icons.Outlined.Subscriptions)
-    data object Apps : Screen("apps", "Приложения", Icons.Outlined.Apps)
-    data object Settings : Screen("settings", "Настройки", Icons.Filled.Settings)
+    data object Apps : Screen("apps", "Прилож.", Icons.Outlined.Apps)
+    data object Settings : Screen("settings", "Настр.", Icons.Filled.Settings)
 }
 
 @Composable
@@ -104,7 +104,13 @@ fun VpEgsApp(vm: MainViewModel) {
                             }
                         },
                         icon = { Icon(s.icon, s.title) },
-                        label = { Text(s.title) },
+                        label = {
+                            Text(
+                                s.title,
+                                maxLines = 1,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = GlassPrimary,
                             selectedTextColor = GlassPrimarySoft,

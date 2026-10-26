@@ -48,11 +48,7 @@ class VpEgsWidgetReceiver : AppWidgetProvider() {
         }
 
         fun updateWidget(context: Context, manager: AppWidgetManager, id: Int) {
-            val opts = manager.getAppWidgetOptions(id)
-            val minW = opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 180)
-            val minH = opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110)
-            val layout = pickLayout(minW, minH)
-            val views = RemoteViews(context.packageName, layout)
+            val views = RemoteViews(context.packageName, R.layout.widget_vpegs)
 
             val connected = VpEgsVpnService.isConnected
             val p = prefs(context)
@@ -86,24 +82,7 @@ class VpEgsWidgetReceiver : AppWidgetProvider() {
                 )
             } catch (_: Exception) {}
 
-            // IP + limit for large layout
-            if (layout == R.layout.widget_2x3) {
-                val ip = p.getString("last_ip", null) ?: "—"
-                trySetText(views, R.id.txt_ip, "IP: $ip")
-                val limit = try {
-                    val subs = Prefs.loadSubscriptions(context)
-                    val selId = Prefs.loadSelectedId(context)
-                    val servers = Prefs.loadServers(context)
-                    val subId = servers.find { it.id == selId }?.subscriptionId
-                    val sub = subs.find { it.id == subId } ?: subs.firstOrNull()
-                    if (sub != null && sub.totalBytes > 0) {
-                        val used = sub.uploadBytes + sub.downloadBytes
-                        fmtBytes(used) + " / " + fmtBytes(sub.totalBytes)
-                    } else "—"
-                } catch (_: Exception) { "—" }
-                trySetText(views, R.id.txt_limit, "Лимит: $limit")
-            }
-
+            
             // Click handlers — only for ids that exist in layout
             views.setOnClickPendingIntent(R.id.btn_toggle, pi(context, WidgetActionReceiver.ACTION_TOGGLE, 101))
             try {

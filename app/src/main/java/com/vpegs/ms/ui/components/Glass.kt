@@ -136,7 +136,7 @@ fun ActionChip(label: String, loading: Boolean = false, accent: Boolean = false,
     ) {
         Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = GlassPrimarySoft)
-            else Text(label, style = MaterialTheme.typography.labelLarge, color = if (accent) GlassPrimarySoft else GlassText)
+            else Text(label, style = MaterialTheme.typography.labelLarge, color = GlassText)
         }
     }
 }
