@@ -266,8 +266,22 @@ class MainViewModel : ViewModel() {
         if (ipLoading) return
         ipLoading = true
         viewModelScope.launch {
+            val viaVpn = VpEgsVpnService.isConnected
             publicIp = withContext(Dispatchers.IO) {
                 try {
+                    val clientBuilder = okhttp3.OkHttpClient.Builder()
+                        .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                    // App is excluded from VPN — when connected, force traffic via local SOCKS
+                    if (viaVpn) {
+                        clientBuilder.proxy(
+                            java.net.Proxy(
+                                java.net.Proxy.Type.SOCKS,
+                                java.net.InetSocketAddress("127.0.0.1", 10808)
+                            )
+                        )
+                    }
+                    val client = clientBuilder.build()
                     val urls = listOf(
                         "https://api.ipify.org",
                         "https://ifconfig.me/ip",
@@ -275,17 +289,14 @@ class MainViewModel : ViewModel() {
                     )
                     for (u in urls) {
                         try {
-                            val req = okhttp3.Request.Builder().url(u).header("User-Agent", "curl/8.0").build()
-                            okhttp3.OkHttpClient.Builder()
-                                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                                .build()
-                                .newCall(req).execute().use { r ->
-                                    if (r.isSuccessful) {
-                                        val body = r.body?.string()?.trim()
-                                        if (!body.isNullOrBlank() && body.length < 50) return@withContext body
-                                    }
+                            val req = okhttp3.Request.Builder().url(u)
+                                .header("User-Agent", "curl/8.0").build()
+                            client.newCall(req).execute().use { r ->
+                                if (r.isSuccessful) {
+                                    val body = r.body?.string()?.trim()
+                                    if (!body.isNullOrBlank() && body.length < 64) return@withContext body
                                 }
+                            }
                         } catch (_: Exception) {}
                     }
                     null
