@@ -34,7 +34,7 @@ import java.util.*
 
 @Composable
 fun ServersScreen(vm: MainViewModel) {
-    val groups = remember(vm.servers, vm.subscriptions, vm.searchQuery, vm.showOnlyFavorites) {
+    val groups = remember(vm.servers, vm.subscriptions, vm.searchQuery, vm.showOnlyFavorites, vm.serverSort) {
         vm.serversBySubscription()
     }
     val expandedIds = remember { mutableStateOf(vm.subscriptions.map { it.id }.toSet()) }

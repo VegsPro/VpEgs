@@ -19,6 +19,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
+enum class ServerSort(val title: String) {
+    AS_IN_SUB("Как в подписке"),
+    NAME_AZ("От А до Я"),
+    NAME_ZA("От Я до А"),
+    PING_ASC("От быстрых"),
+    PING_DESC("От медленных");
+}
+
 class MainViewModel : ViewModel() {
 
     var connState by mutableStateOf(ConnState.DISCONNECTED)
@@ -82,6 +90,8 @@ class MainViewModel : ViewModel() {
     var searchQuery by mutableStateOf("")
         private set
     var showOnlyFavorites by mutableStateOf(false)
+    var serverSort by mutableStateOf(ServerSort.AS_IN_SUB)
+        private set
         private set
     var autoUpdateOnLaunch by mutableStateOf(true)
         private set
@@ -443,6 +453,7 @@ class MainViewModel : ViewModel() {
 
     fun updateSearch(q: String) { searchQuery = q }
     fun toggleFavoritesFilter() { showOnlyFavorites = !showOnlyFavorites }
+    fun updateServerSort(s: ServerSort) { serverSort = s }
     fun updateAutoUpdateOnLaunch(v: Boolean) { autoUpdateOnLaunch = v; persist() }
     fun updateGlobalProxyMode(v: Boolean) { globalProxyMode = v; persist() }
     fun updateInvertAppProxy(v: Boolean) { invertAppProxy = v; persist() }
@@ -640,7 +651,15 @@ class MainViewModel : ViewModel() {
         }
         return subscriptions.mapNotNull { sub ->
             val nodes = list.filter { it.subscriptionId == sub.id }
-                .sortedBy { it.latencyMs ?: 9999 }
+                .let { nodes ->
+                    when (serverSort) {
+                        ServerSort.AS_IN_SUB -> nodes
+                        ServerSort.NAME_AZ -> nodes.sortedBy { it.name.lowercase() }
+                        ServerSort.NAME_ZA -> nodes.sortedByDescending { it.name.lowercase() }
+                        ServerSort.PING_ASC -> nodes.sortedBy { it.latencyMs ?: 99999 }
+                        ServerSort.PING_DESC -> nodes.sortedByDescending { it.latencyMs ?: -1 }
+                    }
+                }
             if (nodes.isEmpty() && searchQuery.isNotBlank()) null
             else sub to nodes
         }.filter { (_, nodes) -> nodes.isNotEmpty() || searchQuery.isBlank() }
