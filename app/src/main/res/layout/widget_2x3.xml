@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="8dp"
     android:background="@drawable/widget_bg">
@@ -17,13 +17,13 @@
             android:id="@+id/btn_toggle"
             android:clickable="true"
             android:focusable="true"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:background="@drawable/widget_btn_circle">
             <ImageView
                 android:id="@+id/icon_power"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:layout_gravity="center"
                 android:src="@android:drawable/ic_media_play"
                 android:tint="#22C55E" />
@@ -40,7 +40,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="#E0F2FE"
-                android:textSize="13sp"
+                android:textSize="12sp"
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:ellipsize="end" />
@@ -49,18 +49,18 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="#7DD3FC"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:maxLines="1" />
         </LinearLayout>
 
-        <ImageView android:id="@+id/btn_ping" android:layout_width="32dp" android:layout_height="32dp"
+        <ImageView android:id="@+id/btn_ping" android:layout_width="30dp" android:layout_height="30dp"
             android:padding="5dp" android:clickable="true" android:focusable="true"
             android:src="@android:drawable/ic_menu_recent_history" android:background="@drawable/widget_btn_small" android:tint="#E0F2FE" />
-        <ImageView android:id="@+id/btn_refresh" android:layout_width="32dp" android:layout_height="32dp"
-            android:layout_marginStart="3dp" android:padding="5dp" android:clickable="true" android:focusable="true"
+        <ImageView android:id="@+id/btn_refresh" android:layout_width="30dp" android:layout_height="30dp"
+            android:layout_marginStart="2dp" android:padding="5dp" android:clickable="true" android:focusable="true"
             android:src="@android:drawable/ic_popup_sync" android:background="@drawable/widget_btn_small" android:tint="#E0F2FE" />
-        <ImageView android:id="@+id/btn_best" android:layout_width="32dp" android:layout_height="32dp"
-            android:layout_marginStart="3dp" android:padding="5dp" android:clickable="true" android:focusable="true"
+        <ImageView android:id="@+id/btn_best" android:layout_width="30dp" android:layout_height="30dp"
+            android:layout_marginStart="2dp" android:padding="5dp" android:clickable="true" android:focusable="true"
             android:src="@android:drawable/ic_menu_sort_by_size" android:background="@drawable/widget_btn_small" android:tint="#38BDF8" />
     </LinearLayout>
 
@@ -72,7 +72,8 @@
         android:text="IP: —"
         android:textColor="#94A3B8"
         android:textSize="11sp"
-        android:maxLines="1" />
+        android:maxLines="1"
+        android:ellipsize="end" />
     <TextView
         android:id="@+id/txt_limit"
         android:layout_width="match_parent"
@@ -80,5 +81,6 @@
         android:text="Лимит: —"
         android:textColor="#94A3B8"
         android:textSize="11sp"
-        android:maxLines="1" />
+        android:maxLines="1"
+        android:ellipsize="end" />
 </LinearLayout>

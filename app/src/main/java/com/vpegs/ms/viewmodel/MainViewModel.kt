@@ -98,6 +98,10 @@ class MainViewModel : ViewModel() {
         private set
     var invertAppProxy by mutableStateOf(false)
         private set
+    var showServerProtocol by mutableStateOf(true)
+        private set
+    var showServerIp by mutableStateOf(true)
+        private set
 
     val filteredServers: List<ServerNode>
         get() {
@@ -133,6 +137,8 @@ class MainViewModel : ViewModel() {
             pingSeconds = Prefs.loadPingSeconds(ctx)
             bgUpdateEnabled = Prefs.loadBgUpdate(ctx)
             bgUpdateHours = Prefs.loadBgUpdateHours(ctx)
+            showServerProtocol = Prefs.loadShowServerProtocol(ctx)
+            showServerIp = Prefs.loadShowServerIp(ctx)
             com.vpegs.ms.worker.SubUpdateWorker.schedule(ctx, bgUpdateHours, bgUpdateEnabled)
             try {
                 themeId = com.vpegs.ms.ui.theme.AppThemeId.valueOf(Prefs.loadThemeId(ctx))
@@ -456,6 +462,14 @@ class MainViewModel : ViewModel() {
     fun updateAutoUpdateOnLaunch(v: Boolean) { autoUpdateOnLaunch = v; persist() }
     fun updateGlobalProxyMode(v: Boolean) { globalProxyMode = v; persist() }
     fun updateInvertAppProxy(v: Boolean) { invertAppProxy = v; persist() }
+    fun updateShowServerProtocol(v: Boolean) {
+        showServerProtocol = v
+        appContext?.let { Prefs.saveServersUi(it, showServerProtocol, showServerIp) }
+    }
+    fun updateShowServerIp(v: Boolean) {
+        showServerIp = v
+        appContext?.let { Prefs.saveServersUi(it, showServerProtocol, showServerIp) }
+    }
 
     fun updateThemeId(id: com.vpegs.ms.ui.theme.AppThemeId) {
         themeId = id

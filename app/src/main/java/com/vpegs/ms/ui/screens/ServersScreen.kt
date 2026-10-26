@@ -112,6 +112,8 @@ fun ServersScreen(vm: MainViewModel) {
                         sub = sub,
                         nodes = nodes,
                         expanded = expandedIds.value.contains(sub.id),
+                        showProtocol = vm.showServerProtocol,
+                        showIp = vm.showServerIp,
                         onToggleExpand = {
                             expandedIds.value = if (expandedIds.value.contains(sub.id))
                                 expandedIds.value - sub.id
@@ -133,6 +135,8 @@ private fun SubscriptionGroup(
     sub: Subscription,
     nodes: List<ServerNode>,
     expanded: Boolean,
+    showProtocol: Boolean,
+    showIp: Boolean,
     onToggleExpand: () -> Unit,
     onSelect: (ServerNode) -> Unit,
     onFavorite: (String) -> Unit,
@@ -245,6 +249,8 @@ private fun SubscriptionGroup(
                 nodes.forEachIndexed { index, server ->
                     RegionRow(
                         server = server,
+                        showProtocol = showProtocol,
+                        showIp = showIp,
                         onSelect = { onSelect(server) },
                         onFav = { onFavorite(server.id) }
                     )
@@ -263,6 +269,8 @@ private fun SubscriptionGroup(
 @Composable
 private fun RegionRow(
     server: ServerNode,
+    showProtocol: Boolean,
+    showIp: Boolean,
     onSelect: () -> Unit,
     onFav: () -> Unit
 ) {
@@ -275,11 +283,11 @@ private fun RegionRow(
                 else androidx.compose.ui.graphics.Color.Transparent
             )
             .clickable(onClick = onSelect)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(server.flag, fontSize = 24.sp)
-        Spacer(Modifier.width(12.dp))
+        Text(server.flag, fontSize = 22.sp)
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 server.country.ifBlank { server.name },
@@ -288,10 +296,22 @@ private fun RegionRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (showIp && server.address.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "${server.flag} ${server.address}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = GlassTextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ProtocolBadge(server.protocol)
-                Spacer(Modifier.width(8.dp))
+                if (showProtocol) {
+                    ProtocolBadge(server.protocol)
+                    Spacer(Modifier.width(8.dp))
+                }
                 LatencyText(server.latencyMs)
             }
         }

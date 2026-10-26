@@ -123,6 +123,38 @@ fun SettingsScreen(vm: MainViewModel) {
             }
         }
 
+
+        Spacer(Modifier.height(16.dp))
+        Text("Серверы", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Spacer(Modifier.height(8.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Протокол у сервера", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Бейдж VLESS / Reality и т.д.", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                Switch(
+                    checked = vm.showServerProtocol,
+                    onCheckedChange = { vm.updateShowServerProtocol(it) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = GlassAccent, checkedTrackColor = GlassAccent.copy(0.35f))
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = GlassBorder)
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("IP у сервера", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Флаг + адрес, например 🇫🇷 1.2.3.4", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                Switch(
+                    checked = vm.showServerIp,
+                    onCheckedChange = { vm.updateShowServerIp(it) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = GlassAccent, checkedTrackColor = GlassAccent.copy(0.35f))
+                )
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         Text("Подписки", style = MaterialTheme.typography.titleMedium, color = GlassText)
         Spacer(Modifier.height(8.dp))

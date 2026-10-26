@@ -192,4 +192,13 @@ object Prefs {
     }
     fun loadBgUpdate(ctx: Context) = sp(ctx).getBoolean("bg_update", false)
     fun loadBgUpdateHours(ctx: Context) = sp(ctx).getInt("bg_update_hours", 6).coerceIn(1, 48)
+
+    fun saveServersUi(ctx: Context, showProtocol: Boolean, showIp: Boolean) {
+        sp(ctx).edit()
+            .putBoolean("show_server_protocol", showProtocol)
+            .putBoolean("show_server_ip", showIp)
+            .apply()
+    }
+    fun loadShowServerProtocol(ctx: Context) = sp(ctx).getBoolean("show_server_protocol", true)
+    fun loadShowServerIp(ctx: Context) = sp(ctx).getBoolean("show_server_ip", true)
 }
