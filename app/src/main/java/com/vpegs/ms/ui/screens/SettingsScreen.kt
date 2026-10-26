@@ -55,7 +55,7 @@ fun SettingsScreen(vm: MainViewModel) {
                                         if (selected) p.primary else p.border,
                                         RoundedCornerShape(12.dp)
                                     )
-                                    .clickable { vm.setThemeId(id) }
+                                    .clickable { vm.updateThemeId(id) }
                                     .padding(10.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -97,7 +97,7 @@ fun SettingsScreen(vm: MainViewModel) {
             Spacer(Modifier.height(8.dp))
             Slider(
                 value = vm.pingSeconds.toFloat(),
-                onValueChange = { vm.setPingSeconds(it.toInt()) },
+                onValueChange = { vm.updatePingSeconds(it.toInt()) },
                 valueRange = 1f..15f,
                 steps = 13,
                 colors = SliderDefaults.colors(

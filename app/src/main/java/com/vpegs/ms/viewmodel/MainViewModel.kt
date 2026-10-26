@@ -328,11 +328,11 @@ class MainViewModel : ViewModel() {
     fun updateGlobalProxyMode(v: Boolean) { globalProxyMode = v; persist() }
     fun updateInvertAppProxy(v: Boolean) { invertAppProxy = v; persist() }
 
-    fun setThemeId(id: com.vpegs.ms.ui.theme.AppThemeId) {
+    fun updateThemeId(id: com.vpegs.ms.ui.theme.AppThemeId) {
         themeId = id
         appContext?.let { Prefs.saveThemeId(it, id.name) }
     }
-    fun setPingSeconds(sec: Int) {
+    fun updatePingSeconds(sec: Int) {
         pingSeconds = sec.coerceIn(1, 15)
         appContext?.let { Prefs.savePingSeconds(it, pingSeconds) }
     }
