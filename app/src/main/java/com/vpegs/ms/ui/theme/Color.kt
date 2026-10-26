@@ -17,13 +17,13 @@ var GlassWarning = Color(0xFFFBBF24)
 var GlassSuccess = Color(0xFF4ADE80)
 
 enum class AppThemeId(val title: String) {
-    DARK_BLUE("Тёмная · синяя"),
-    DARK_PURPLE("Тёмная · фиолетовая"),
-    DARK_GREEN("Тёмная · зелёная"),
-    DARK_ORANGE("Тёмная · оранжевая"),
-    LIGHT_BLUE("Светлая · синяя"),
-    LIGHT_PURPLE("Светлая · фиолетовая"),
-    LIGHT_GRAY("Светлая · серая");
+    DARK_BLUE("Тёмная синяя"),
+    DARK_PURPLE("Тёмная фиолет."),
+    DARK_GREEN("Тёмная зелёная"),
+    DARK_ORANGE("Тёмная оранж."),
+    LIGHT_BLUE("Светлая синяя"),
+    LIGHT_PURPLE("Светлая фиолет."),
+    LIGHT_GRAY("Светлая серая");
 }
 
 data class ThemePalette(

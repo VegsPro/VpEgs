@@ -149,8 +149,7 @@ class VpEgsVpnService : VpnService() {
             if (bypass.isEmpty()) {
                 val str = sp.getString("bypass_pkgs_str", null).orEmpty()
                 if (str.isNotBlank()) {
-                    bypass = HashSet(str.split("
-").map { it.trim() }.filter { it.isNotEmpty() })
+                    bypass = HashSet(str.split("\n").map { it.trim() }.filter { it.isNotEmpty() })
                 }
             }
             // Expand known browser / WebView companion packages
