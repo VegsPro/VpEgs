@@ -118,14 +118,6 @@ class VpEgsVpnService : VpnService() {
             }
             controller = ctrl
 
-            if (!ctrl.isRunning) {
-                Log.e(TAG, "core not running after startLoop")
-                stopVpnInternal()
-                broadcast(false, "Xray не запустился")
-                stopSelf()
-                return
-            }
-
             running = true
             isConnected = true
             currentServerName = serverName
