@@ -117,13 +117,15 @@ class VpEgsWidgetReceiver : AppWidgetProvider() {
 
         /** Rough cell mapping by min width/height dp */
         private fun pickLayout(minW: Int, minH: Int): Int {
-            val cols = ((minW + 30) / 70).coerceAtLeast(1)
-            val rows = ((minH + 30) / 70).coerceAtLeast(1)
+            // Cell ≈ 70dp; use actual option sizes from launcher
             return when {
-                cols <= 1 && rows <= 1 -> R.layout.widget_1x1
-                rows <= 1 || (cols <= 2 && rows <= 1) -> R.layout.widget_1x2
-                rows >= 3 || (cols >= 2 && rows >= 3) -> R.layout.widget_2x3
-                else -> R.layout.widget_vpegs // 2x2 default
+                minW < 90 && minH < 90 -> R.layout.widget_1x1
+                minH < 80 -> {
+                    // Single-row: narrow = 1x2 (power+region+best), wider = full bar
+                    if (minW < 160) R.layout.widget_1x2 else R.layout.widget_vpegs
+                }
+                minH >= 100 -> R.layout.widget_2x3 // tall enough for IP + limit
+                else -> R.layout.widget_vpegs
             }
         }
 
