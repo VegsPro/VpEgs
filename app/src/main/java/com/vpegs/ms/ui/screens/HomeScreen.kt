@@ -157,16 +157,16 @@ fun HomeScreen(vm: MainViewModel) {
 
         if (connected) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard("↑", vm.fmtBytes(vm.stats.bytesUp), Modifier.weight(1f))
-                StatCard("↓", vm.fmtBytes(vm.stats.bytesDown), Modifier.weight(1f))
+                StatPill("↑", vm.fmtBytes(vm.stats.uploadBytes), Modifier.weight(1f))
+                StatPill("↓", vm.fmtBytes(vm.stats.downloadBytes), Modifier.weight(1f))
             }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard("Скор. ↑", vm.stats.speedUp, Modifier.weight(1f))
-                StatCard("Скор. ↓", vm.stats.speedDown, Modifier.weight(1f))
+                StatPill("Скор. ↑", vm.stats.speedUp, Modifier.weight(1f))
+                StatPill("Скор. ↓", vm.stats.speedDown, Modifier.weight(1f))
             }
             Spacer(Modifier.height(10.dp))
-            StatCard("Время", vm.fmtDuration(vm.stats.durationSec), Modifier.fillMaxWidth())
+            StatPill("Время", vm.fmtDuration(vm.stats.durationSec), Modifier.fillMaxWidth())
         } else {
             GlassCard(Modifier.fillMaxWidth()) {
                 Text(
