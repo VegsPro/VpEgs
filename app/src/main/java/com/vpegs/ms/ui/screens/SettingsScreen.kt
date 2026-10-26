@@ -49,10 +49,10 @@ fun SettingsScreen(vm: MainViewModel) {
                                 Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(if (selected) p.primary.copy(0.25f) else p.surface)
+                                    .background(if (selected) GlassPrimary.copy(0.2f) else GlassSurfaceHigh)
                                     .border(
-                                        1.dp,
-                                        if (selected) p.primary else p.border,
+                                        1.5.dp,
+                                        if (selected) GlassPrimary else GlassBorder,
                                         RoundedCornerShape(12.dp)
                                     )
                                     .clickable { vm.updateThemeId(id) }
@@ -69,7 +69,7 @@ fun SettingsScreen(vm: MainViewModel) {
                                     Text(
                                         id.title,
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = if (selected) p.primary else GlassText
+                                        color = GlassText
                                     )
                                 }
                             }

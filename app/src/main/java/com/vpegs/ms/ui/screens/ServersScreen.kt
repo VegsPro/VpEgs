@@ -154,6 +154,33 @@ private fun SubscriptionGroup(
                     style = MaterialTheme.typography.labelMedium,
                     color = GlassTextMuted
                 )
+                if (sub.totalBytes > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    val used = sub.uploadBytes + sub.downloadBytes
+                    val progress = (used.toFloat() / sub.totalBytes).coerceIn(0f, 1f)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(formatTraffic(used) + " / " + formatTraffic(sub.totalBytes), style = MaterialTheme.typography.labelSmall, color = GlassText)
+                        if (sub.expireAt > 0) {
+                            Text("до ${fmt.format(Date(sub.expireAt * 1000))}", style = MaterialTheme.typography.labelSmall, color = GlassAccent)
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(GlassBorder)
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(progress)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (progress > 0.9f) GlassDanger else GlassPrimary)
+                        )
+                    }
+                }
                 if (sub.announce.isNotBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text(sub.announce, style = MaterialTheme.typography.labelMedium, color = GlassAccent.copy(0.9f), maxLines = 3)

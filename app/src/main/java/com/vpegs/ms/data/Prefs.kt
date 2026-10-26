@@ -1,6 +1,7 @@
 package com.vpegs.ms.data
 
 import android.content.Context
+import java.util.HashSet
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -169,7 +170,7 @@ object Prefs {
         sp(ctx).getInt("ping_seconds", 5).coerceIn(1, 15)
 
     fun saveBypassPackages(ctx: Context, pkgs: Set<String>) {
-        sp(ctx).edit().putStringSet("bypass_pkgs", pkgs).apply()
+        sp(ctx).edit().putStringSet("bypass_pkgs", HashSet(pkgs)).apply()
     }
     fun loadBypassPackages(ctx: Context): Set<String> =
         sp(ctx).getStringSet("bypass_pkgs", emptySet()) ?: emptySet()

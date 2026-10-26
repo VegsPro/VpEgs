@@ -73,9 +73,17 @@ fun AppsScreen(vm: MainViewModel) {
             }
         }
 
-        if (!vm.globalProxyMode) {
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (vm.globalProxyMode)
+                "Выключи переключатель у приложения — оно пойдёт мимо VPN (нужен реконнект)"
+            else
+                "Включи приложения, которые должны идти через VPN (нужен реконнект)",
+            style = MaterialTheme.typography.labelMedium,
+            color = GlassTextMuted
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
                 value = vm.appSearch,
                 onValueChange = { vm.updateAppSearch(it) },
                 modifier = Modifier.fillMaxWidth(),
@@ -116,14 +124,6 @@ fun AppsScreen(vm: MainViewModel) {
                     }
                 }
             }
-        } else {
-            Spacer(Modifier.height(20.dp))
-            Text(
-                "Глобальный режим — весь трафик через VPN.\nОтключите, чтобы выбрать приложения вручную.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = GlassTextMuted
-            )
-        }
     }
 }
 

@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.*
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,6 +25,7 @@ fun HomeScreen(vm: MainViewModel) {
     val connected = vm.connState == ConnState.CONNECTED
     val connecting = vm.connState == ConnState.CONNECTING || vm.connState == ConnState.DISCONNECTING
     val server = vm.selectedServer
+    LaunchedEffect(vm.connState) { vm.refreshPublicIp() }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 8.dp, bottom = 28.dp),
@@ -73,9 +75,30 @@ fun HomeScreen(vm: MainViewModel) {
 
         // Quick actions: Ping / Refresh / Best
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionChip("Пинг", vm.isPinging) { vm.pingCurrent() }
+            // IP card above chips is injected separately
+            GlassCard(Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Текущий IP", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                        Text(
+                            when {
+                                vm.ipLoading -> "определение…"
+                                !vm.publicIp.isNullOrBlank() -> vm.publicIp!!
+                                else -> "н/д"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GlassText
+                        )
+                    }
+                    TextButton(onClick = { vm.refreshPublicIp() }) {
+                        Text("Обновить", color = GlassPrimary)
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+                        ActionChip("Пинг", vm.isPinging) { vm.pingCurrent() }
             ActionChip("Обновить", false) { vm.refreshCurrentServer() }
-            ActionChip("Лучший", vm.isScanningBest, accent = true) { vm.selectBestServer() }
+            ActionChip("Лучший", vm.isScanningBest, accent = true) { vm.selectBestServer(activity) }
         }
 
         Spacer(Modifier.height(18.dp))

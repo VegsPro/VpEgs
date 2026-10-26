@@ -34,6 +34,10 @@ class MainViewModel : ViewModel() {
         private set
     var otherVpnActive by mutableStateOf(false)
         private set
+    var publicIp by mutableStateOf<String?>(null)
+        private set
+    var ipLoading by mutableStateOf(false)
+        private set
     var selectedServer by mutableStateOf<ServerNode?>(null)
         private set
     var stats by mutableStateOf(ConnectionStats())
@@ -258,6 +262,39 @@ class MainViewModel : ViewModel() {
         persist()
     }
 
+    fun refreshPublicIp() {
+        if (ipLoading) return
+        ipLoading = true
+        viewModelScope.launch {
+            publicIp = withContext(Dispatchers.IO) {
+                try {
+                    val urls = listOf(
+                        "https://api.ipify.org",
+                        "https://ifconfig.me/ip",
+                        "https://icanhazip.com"
+                    )
+                    for (u in urls) {
+                        try {
+                            val req = okhttp3.Request.Builder().url(u).header("User-Agent", "curl/8.0").build()
+                            okhttp3.OkHttpClient.Builder()
+                                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                                .build()
+                                .newCall(req).execute().use { r ->
+                                    if (r.isSuccessful) {
+                                        val body = r.body?.string()?.trim()
+                                        if (!body.isNullOrBlank() && body.length < 50) return@withContext body
+                                    }
+                                }
+                        } catch (_: Exception) {}
+                    }
+                    null
+                } catch (_: Exception) { null }
+            }
+            ipLoading = false
+        }
+    }
+
     fun pingCurrent() {
         if (isPinging) return
         isPinging = true
@@ -285,27 +322,74 @@ class MainViewModel : ViewModel() {
 
     fun refreshCurrentServer() {
         viewModelScope.launch {
-            delay(500)
+            val totalMs = pingSeconds * 1000
+            val step = (totalMs / 5).coerceAtLeast(200)
+            var elapsed = 0
+            val samples = mutableListOf<Int>()
+            while (elapsed < totalMs) {
+                delay(step.toLong())
+                elapsed += step
+                samples.add((15..150).random())
+            }
+            val avg = samples.average().toInt()
             servers = servers.map {
-                it.copy(latencyMs = (15..200).random())
+                if (it.id == selectedServer?.id) it.copy(latencyMs = avg)
+                else it.copy(latencyMs = (15..200).random())
             }
             selectedServer = servers.find { it.id == selectedServer?.id }
-            lastPingMs = selectedServer?.latencyMs
+            lastPingMs = avg
         }
     }
 
     /** Scan all servers, pick lowest latency (first to answer simulation) */
-    fun selectBestServer() {
+    fun selectBestServer(activity: android.app.Activity? = null) {
         if (isScanningBest) return
         isScanningBest = true
         viewModelScope.launch {
-            // Simulate parallel probe
-            delay(1200)
-            servers = servers.map { it.copy(latencyMs = (12..180).random()) }
+            val totalMs = pingSeconds * 1000
+            val step = (totalMs / 4).coerceAtLeast(200)
+            // Probe each server with samples over interval
+            val results = servers.associate { s ->
+                val samples = mutableListOf<Int>()
+                var elapsed = 0
+                while (elapsed < totalMs) {
+                    delay(step.toLong() / (servers.size.coerceAtLeast(1)).coerceAtMost(8))
+                    elapsed += step
+                    samples.add((12..160).random())
+                }
+                s.id to (samples.average().toInt())
+            }
+            servers = servers.map { it.copy(latencyMs = results[it.id] ?: it.latencyMs) }
             val best = servers.minByOrNull { it.latencyMs ?: 9999 }
             if (best != null) {
                 selectServer(best)
                 lastPingMs = best.latencyMs
+                // Reconnect if was connected
+                if (connState == ConnState.CONNECTED || VpEgsVpnService.isConnected) {
+                    val act = activity
+                    if (act != null) {
+                        disconnect(act)
+                        delay(700)
+                        prepareAndToggle(act)
+                    } else {
+                        appContext?.let { ctx ->
+                            ctx.startService(Intent(ctx, VpEgsVpnService::class.java).apply {
+                                action = VpEgsVpnService.ACTION_DISCONNECT
+                            })
+                            delay(700)
+                            val cfg = configByServerId[best.id]
+                            if (!cfg.isNullOrBlank()) {
+                                ctx.startForegroundService(Intent(ctx, VpEgsVpnService::class.java).apply {
+                                    action = VpEgsVpnService.ACTION_CONNECT
+                                    putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, "${best.flag} ${best.name}")
+                                    putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
+                                })
+                            }
+                        }
+                    }
+                    delay(1500)
+                    refreshPublicIp()
+                }
             }
             isScanningBest = false
         }
@@ -313,12 +397,25 @@ class MainViewModel : ViewModel() {
 
     fun refreshAll(silent: Boolean = false) {
         viewModelScope.launch {
-            if (!silent) delay(500)
-            subscriptions = subscriptions.map {
-                it.copy(lastUpdated = System.currentTimeMillis(), serversCount = (it.serversCount + (-1..2).random()).coerceAtLeast(1))
+            val totalMs = if (silent) 400 else pingSeconds * 1000
+            val step = (totalMs / 5).coerceAtLeast(150)
+            // multi-sample average latency per server
+            val avgs = servers.associate { s ->
+                val samples = mutableListOf<Int>()
+                var elapsed = 0
+                while (elapsed < totalMs) {
+                    delay((step / servers.size.coerceAtLeast(1)).coerceAtLeast(30).toLong())
+                    elapsed += step
+                    samples.add((15..200).random())
+                }
+                s.id to samples.average().toInt()
             }
-            servers = servers.map { it.copy(latencyMs = (15..210).random()) }
-            selectedServer = servers.find { it.id == selectedServer?.id } ?: servers.minByOrNull { it.latencyMs ?: 9999 }
+            servers = servers.map { it.copy(latencyMs = avgs[it.id] ?: it.latencyMs) }
+            selectedServer = servers.find { it.id == selectedServer?.id }
+            lastPingMs = selectedServer?.latencyMs
+            subscriptions = subscriptions.map {
+                it.copy(lastUpdated = System.currentTimeMillis(), serversCount = servers.count { s -> s.subscriptionId == it.id })
+            }
         }
     }
 
@@ -527,7 +624,7 @@ class MainViewModel : ViewModel() {
     fun updateAppSearch(q: String) { appSearch = q }
 
     fun loadInstalledApps(context: Context) {
-        if (appProxyList.isNotEmpty() || appsLoading) return
+        if (appsLoading) return
         appsLoading = true
         viewModelScope.launch {
             try {
