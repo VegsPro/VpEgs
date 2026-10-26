@@ -140,7 +140,7 @@ fun SettingsScreen(vm: MainViewModel) {
             Text("Для подписок с включённым авто", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
             Slider(
                 value = vm.bgUpdateHours.toFloat(),
-                onValueChange = { vm.setBgUpdateHours(it.toInt()) },
+                onValueChange = { vm.updateBgUpdateHours(it.toInt()) },
                 valueRange = 1f..24f,
                 steps = 22,
                 colors = SliderDefaults.colors(thumbColor = GlassAccent, activeTrackColor = GlassPrimary)
@@ -154,7 +154,7 @@ fun SettingsScreen(vm: MainViewModel) {
                 }
                 Switch(
                     checked = vm.bgUpdateEnabled,
-                    onCheckedChange = { vm.setBgUpdateEnabled(it) },
+                    onCheckedChange = { vm.updateBgUpdateEnabled(it) },
                     colors = SwitchDefaults.colors(checkedThumbColor = GlassAccent, checkedTrackColor = GlassAccent.copy(0.35f))
                 )
             }

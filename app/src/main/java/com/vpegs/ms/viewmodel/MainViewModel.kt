@@ -461,14 +461,14 @@ class MainViewModel : ViewModel() {
         themeId = id
         appContext?.let { Prefs.saveThemeId(it, id.name) }
     }
-    fun setBgUpdateEnabled(v: Boolean) {
+    fun updateBgUpdateEnabled(v: Boolean) {
         bgUpdateEnabled = v
         appContext?.let {
             Prefs.saveBgUpdate(it, bgUpdateEnabled, bgUpdateHours)
             com.vpegs.ms.worker.SubUpdateWorker.schedule(it, bgUpdateHours, bgUpdateEnabled)
         }
     }
-    fun setBgUpdateHours(h: Int) {
+    fun updateBgUpdateHours(h: Int) {
         bgUpdateHours = h.coerceIn(1, 24)
         appContext?.let {
             Prefs.saveBgUpdate(it, bgUpdateEnabled, bgUpdateHours)
