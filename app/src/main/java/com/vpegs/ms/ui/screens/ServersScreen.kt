@@ -296,15 +296,23 @@ private fun RegionRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (showIp && server.address.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    "${server.flag} ${server.address}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = GlassTextMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            if (showIp) {
+                val ipLine = when {
+                    server.exitIp.isNotBlank() -> "${server.flag} ${server.exitIp}"
+                    server.address.isNotBlank() && server.address.matches(Regex("""^\d{1,3}(\.\d{1,3}){3}$""")) ->
+                        "${server.flag} ${server.address}"
+                    else -> null
+                }
+                if (ipLine != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        ipLine,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (server.exitIp.isNotBlank()) GlassAccent else GlassTextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {

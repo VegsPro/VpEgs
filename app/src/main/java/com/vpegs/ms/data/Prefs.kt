@@ -76,7 +76,7 @@ object Prefs {
                 .put("latencyMs", s.latencyMs ?: -1)
                 .put("isFavorite", s.isFavorite)
                 .put("isSelected", s.isSelected)
-                .put("address", s.address)
+                .put("address", s.address).put("exitIp", s.exitIp)
                 .put("port", s.port)
                 .put("rawConfig", s.rawConfig)
                 .put("subscriptionId", s.subscriptionId)
@@ -106,6 +106,7 @@ object Prefs {
                         isFavorite = o.optBoolean("isFavorite", false),
                         isSelected = o.optBoolean("isSelected", false),
                         address = o.optString("address"),
+                        exitIp = o.optString("exitIp"),
                         port = o.optInt("port", 443),
                         rawConfig = o.optString("rawConfig"),
                         subscriptionId = o.optString("subscriptionId")

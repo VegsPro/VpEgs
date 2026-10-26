@@ -24,6 +24,7 @@ data class ServerNode(
     val isFavorite: Boolean = false,
     val isSelected: Boolean = false,
     val address: String = "",
+    val exitIp: String = "",
     val port: Int = 443,
     val rawConfig: String = "",
     val subscriptionId: String = ""

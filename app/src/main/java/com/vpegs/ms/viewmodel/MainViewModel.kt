@@ -325,7 +325,16 @@ class MainViewModel : ViewModel() {
                 } catch (_: Exception) { null }
             }
             ipLoading = false
-            // for widget 2x3
+            // Cache measured exit IP on the active server
+            val ip = publicIp
+            val sid = selectedServer?.id
+            if (!ip.isNullOrBlank() && sid != null && viaVpn) {
+                servers = servers.map {
+                    if (it.id == sid) it.copy(exitIp = ip) else it
+                }
+                selectedServer = selectedServer?.copy(exitIp = ip)
+                persist()
+            }
             appContext?.getSharedPreferences("vpegs_widget", android.content.Context.MODE_PRIVATE)
                 ?.edit()?.putString("last_ip", publicIp ?: "—")?.apply()
             try { com.vpegs.ms.ui.widget.VpEgsWidgetReceiver.updateAll(appContext!!) } catch (_: Exception) {}
