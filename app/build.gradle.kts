@@ -12,8 +12,8 @@ android {
         applicationId = "com.vpegs.ms"
         minSdk = 29
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.5.2"
+        versionCode = 21
+        versionName = "1.6.0"
         // Only real phone ABIs — cuts APK ~half (drop x86 emulator libs)
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -73,5 +73,6 @@ dependencies {
     implementation(files("libs/libv2ray.aar"))
     implementation(files("libs/hev-socks5-tunnel.aar"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 }
 

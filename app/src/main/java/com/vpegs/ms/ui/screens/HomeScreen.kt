@@ -31,6 +31,13 @@ fun HomeScreen(vm: MainViewModel) {
     val sub = server?.let { s -> vm.subscriptions.find { it.id == s.subscriptionId } }
 
     LaunchedEffect(vm.connState) { vm.refreshPublicIp() }
+    // Sync ON/OFF with real system VPN every second
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            vm.refreshVpnPresence(ctx)
+        }
+    }
 
     Column(
         Modifier

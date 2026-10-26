@@ -174,4 +174,10 @@ object Prefs {
     }
     fun loadBypassPackages(ctx: Context): Set<String> =
         sp(ctx).getStringSet("bypass_pkgs", emptySet()) ?: emptySet()
+
+    fun saveBgUpdate(ctx: Context, enabled: Boolean, hours: Int) {
+        sp(ctx).edit().putBoolean("bg_update", enabled).putInt("bg_update_hours", hours.coerceIn(1, 48)).apply()
+    }
+    fun loadBgUpdate(ctx: Context) = sp(ctx).getBoolean("bg_update", false)
+    fun loadBgUpdateHours(ctx: Context) = sp(ctx).getInt("bg_update_hours", 6).coerceIn(1, 48)
 }

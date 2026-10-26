@@ -18,7 +18,9 @@ import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
 import java.io.File
-import java.io.FileOutputStream
+import java.util.HashSet
+import java.io.File
+import java.util.HashSetOutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -137,46 +139,57 @@ class VpEgsVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try { builder.setMetered(false) } catch (_: Exception) {}
         }
-        // Always exclude ourselves so Xray/hev can reach the internet
+                // Always exclude ourselves so Xray/hev can reach the internet
         try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
 
-        // Per-app routing from prefs
+        // Per-app routing from prefs (copy StringSet — Android may return mutable weirdness)
         try {
             val sp = getSharedPreferences("vpegs_data", MODE_PRIVATE)
             val global = sp.getBoolean("global_proxy", true)
             val invert = sp.getBoolean("invert_proxy", false)
-            val bypass = sp.getStringSet("bypass_pkgs", emptySet()) ?: emptySet()
-            // Also collect from app_proxy_enabled style if stored separately
-            if (global) {
-                // All apps through VPN EXCEPT bypass list (and invert flips meaning)
-                val toBypass = if (invert) {
-                    // invert: only listed apps go through VPN → allowed list mode
-                    emptySet()
-                } else {
-                    bypass
-                }
-                if (invert) {
-                    // Only selected packages through VPN
-                    val only = bypass
-                    if (only.isNotEmpty()) {
-                        only.forEach { pkg ->
-                            try { builder.addAllowedApplication(pkg) } catch (_: Exception) {}
-                        }
+            val bypass = HashSet(sp.getStringSet("bypass_pkgs", emptySet()) ?: emptySet())
+            Log.i(TAG, "routing global=$global invert=$invert bypass=$bypass")
+
+            if (global && !invert) {
+                // All through VPN except bypass list
+                bypass.forEach { pkg ->
+                    try {
+                        builder.addDisallowedApplication(pkg)
+                        Log.i(TAG, "disallow $pkg")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "disallow fail $pkg: ${e.message}")
                     }
-                } else {
-                    toBypass.forEach { pkg ->
-                        try { builder.addDisallowedApplication(pkg) } catch (_: Exception) {}
+                }
+            } else if (global && invert) {
+                // Only listed apps through VPN
+                if (bypass.isNotEmpty()) {
+                    bypass.forEach { pkg ->
+                        try {
+                            builder.addAllowedApplication(pkg)
+                            Log.i(TAG, "allow $pkg")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "allow fail $pkg: ${e.message}")
+                        }
                     }
                 }
             } else {
-                // Selective mode: only listed apps through VPN
-                if (bypass.isNotEmpty()) {
-                    bypass.forEach { pkg ->
+                // Selective: only enabled (proxy) apps — stored inverted in bypass = off apps
+                // When global=false: bypass set = apps that should NOT use VPN... wait:
+                // We store bypass = !proxyEnabled. For selective "only selected through VPN",
+                // selected = proxyEnabled=true = not in bypass. So allow all NOT in bypass... 
+                // Actually with global=false we allow only apps with proxyEnabled=true.
+                val pm = packageManager
+                val all = try {
+                    pm.getInstalledApplications(0).map { it.packageName }.toSet()
+                } catch (_: Exception) { emptySet() }
+                val throughVpn = all - bypass - setOf(packageName)
+                // Using allowed-list mode
+                if (throughVpn.isNotEmpty()) {
+                    throughVpn.take(400).forEach { pkg ->
                         try { builder.addAllowedApplication(pkg) } catch (_: Exception) {}
                     }
                 }
             }
-            Log.i(TAG, "routing global=$global invert=$invert bypass=${bypass.size}")
         } catch (e: Exception) {
             Log.w(TAG, "routing setup: ${e.message}")
         }

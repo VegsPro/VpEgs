@@ -131,6 +131,35 @@ fun SettingsScreen(vm: MainViewModel) {
             }
         }
 
+
+        Spacer(Modifier.height(16.dp))
+        Text("Подписки", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Spacer(Modifier.height(8.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Text("Интервал автообновления (ч)", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+            Text("Для подписок с включённым авто", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+            Slider(
+                value = vm.bgUpdateHours.toFloat(),
+                onValueChange = { vm.setBgUpdateHours(it.toInt()) },
+                valueRange = 1f..24f,
+                steps = 22,
+                colors = SliderDefaults.colors(thumbColor = GlassAccent, activeTrackColor = GlassPrimary)
+            )
+            Text("${vm.bgUpdateHours} ч", color = GlassPrimary, style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Фоновое обновление", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Даже когда приложение закрыто", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                Switch(
+                    checked = vm.bgUpdateEnabled,
+                    onCheckedChange = { vm.setBgUpdateEnabled(it) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = GlassAccent, checkedTrackColor = GlassAccent.copy(0.35f))
+                )
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         Text("О VpEgs", style = MaterialTheme.typography.titleMedium, color = GlassText)
         Spacer(Modifier.height(8.dp))

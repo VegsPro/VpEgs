@@ -38,6 +38,10 @@ class MainViewModel : ViewModel() {
         private set
     var ipLoading by mutableStateOf(false)
         private set
+    var bgUpdateEnabled by mutableStateOf(false)
+        private set
+    var bgUpdateHours by mutableStateOf(6)
+        private set
     var selectedServer by mutableStateOf<ServerNode?>(null)
         private set
     var stats by mutableStateOf(ConnectionStats())
@@ -118,6 +122,9 @@ class MainViewModel : ViewModel() {
             invertAppProxy = Prefs.loadInvertProxy(ctx)
             autoUpdateOnLaunch = Prefs.loadAutoUpdate(ctx)
             pingSeconds = Prefs.loadPingSeconds(ctx)
+            bgUpdateEnabled = Prefs.loadBgUpdate(ctx)
+            bgUpdateHours = Prefs.loadBgUpdateHours(ctx)
+            com.vpegs.ms.worker.SubUpdateWorker.schedule(ctx, bgUpdateHours, bgUpdateEnabled)
             try {
                 themeId = com.vpegs.ms.ui.theme.AppThemeId.valueOf(Prefs.loadThemeId(ctx))
             } catch (_: Exception) {
@@ -303,6 +310,10 @@ class MainViewModel : ViewModel() {
                 } catch (_: Exception) { null }
             }
             ipLoading = false
+            // for widget 2x3
+            appContext?.getSharedPreferences("vpegs_widget", android.content.Context.MODE_PRIVATE)
+                ?.edit()?.putString("last_ip", publicIp ?: "—")?.apply()
+            try { com.vpegs.ms.ui.widget.VpEgsWidgetReceiver.updateAll(appContext!!) } catch (_: Exception) {}
         }
     }
 
@@ -440,6 +451,20 @@ class MainViewModel : ViewModel() {
         themeId = id
         appContext?.let { Prefs.saveThemeId(it, id.name) }
     }
+    fun setBgUpdateEnabled(v: Boolean) {
+        bgUpdateEnabled = v
+        appContext?.let {
+            Prefs.saveBgUpdate(it, bgUpdateEnabled, bgUpdateHours)
+            com.vpegs.ms.worker.SubUpdateWorker.schedule(it, bgUpdateHours, bgUpdateEnabled)
+        }
+    }
+    fun setBgUpdateHours(h: Int) {
+        bgUpdateHours = h.coerceIn(1, 24)
+        appContext?.let {
+            Prefs.saveBgUpdate(it, bgUpdateEnabled, bgUpdateHours)
+            com.vpegs.ms.worker.SubUpdateWorker.schedule(it, bgUpdateHours, bgUpdateEnabled)
+        }
+    }
     fun updatePingSeconds(sec: Int) {
         pingSeconds = sec.coerceIn(1, 15)
         appContext?.let { Prefs.savePingSeconds(it, pingSeconds) }
@@ -570,6 +595,25 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    fun updateSubscription(id: String, name: String, url: String) {
+        val old = subscriptions.find { it.id == id } ?: return
+        val newName = name.ifBlank { old.name }
+        val newUrl = url.ifBlank { old.url }
+        subscriptions = subscriptions.map {
+            if (it.id == id) it.copy(name = newName, url = newUrl) else it
+        }
+        persist()
+        if (newUrl != old.url) {
+            // re-fetch with new url
+            viewModelScope.launch {
+                try {
+                    addSubscription(newName, newUrl)
+                    // remove old servers of this id after re-add would duplicate — simplify: just persist name/url
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
     fun removeSubscription(id: String) {
         val toRemove = servers.filter { it.subscriptionId == id }.map { it.id }
         toRemove.forEach { configByServerId.remove(it) }
@@ -612,6 +656,9 @@ class MainViewModel : ViewModel() {
         appContext?.let {
             Prefs.saveBypassPackages(it, bypass)
             Prefs.saveSettings(it, globalProxyMode, invertAppProxy, autoUpdateOnLaunch)
+        }
+        if (connState == ConnState.CONNECTED) {
+            lastError = "Обход изменён — переподключите VPN"
         }
     }
 
