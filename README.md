@@ -2,7 +2,7 @@
 
 **Современный VPN‑клиент для Android** — подписки, Reality / VLESS / VMess / Trojan / SS / Hysteria2, обход приложений, виджет и плитка в шторке.
 
-**Версия:** `1.7.0` · package `com.vpegs.ms`
+**Версия:** `1.7.1` · package `com.vpegs.ms`
 
 <p align="center">
   <a href="https://github.com/VegsPro/VpEgs/releases/latest"><img src="https://img.shields.io/github/v/release/VegsPro/VpEgs?label=Release&color=0ea5e9" alt="Release"></a>
