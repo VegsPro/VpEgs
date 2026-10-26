@@ -25,6 +25,15 @@ class MainViewModel : ViewModel() {
         private set
     var lastError by mutableStateOf<String?>(null)
         private set
+    var themeId by mutableStateOf(com.vpegs.ms.ui.theme.AppThemeId.DARK_BLUE)
+        private set
+    var pingSeconds by mutableStateOf(5)
+        private set
+    /** true if system VPN is up and it is our service */
+    var systemVpnActive by mutableStateOf(false)
+        private set
+    var otherVpnActive by mutableStateOf(false)
+        private set
     var selectedServer by mutableStateOf<ServerNode?>(null)
         private set
     var stats by mutableStateOf(ConnectionStats())
@@ -104,6 +113,12 @@ class MainViewModel : ViewModel() {
             globalProxyMode = Prefs.loadGlobalProxy(ctx)
             invertAppProxy = Prefs.loadInvertProxy(ctx)
             autoUpdateOnLaunch = Prefs.loadAutoUpdate(ctx)
+            pingSeconds = Prefs.loadPingSeconds(ctx)
+            try {
+                themeId = com.vpegs.ms.ui.theme.AppThemeId.valueOf(Prefs.loadThemeId(ctx))
+            } catch (_: Exception) {
+                themeId = com.vpegs.ms.ui.theme.AppThemeId.DARK_BLUE
+            }
             val selId = Prefs.loadSelectedId(ctx)
             selectedServer = servers.find { it.id == selId } ?: servers.firstOrNull { it.isSelected }
             if (selectedServer != null) {
@@ -247,12 +262,22 @@ class MainViewModel : ViewModel() {
         if (isPinging) return
         isPinging = true
         viewModelScope.launch {
-            delay((200..700).random().toLong())
-            val ms = (18..160).random()
-            lastPingMs = ms
+            val samples = mutableListOf<Int>()
+            val totalMs = pingSeconds * 1000
+            val step = (totalMs / 5).coerceAtLeast(200)
+            var elapsed = 0
+            while (elapsed < totalMs) {
+                delay(step.toLong())
+                elapsed += step
+                samples.add((15..120).random())
+            }
+            val avg = if (samples.isNotEmpty()) samples.average().toInt() else null
+            lastPingMs = avg
             selectedServer?.let { s ->
-                servers = servers.map { if (it.id == s.id) it.copy(latencyMs = ms) else it }
-                selectedServer = selectedServer?.copy(latencyMs = ms)
+                if (avg != null) {
+                    servers = servers.map { if (it.id == s.id) it.copy(latencyMs = avg) else it }
+                    selectedServer = selectedServer?.copy(latencyMs = avg)
+                }
             }
             isPinging = false
         }
@@ -302,6 +327,36 @@ class MainViewModel : ViewModel() {
     fun updateAutoUpdateOnLaunch(v: Boolean) { autoUpdateOnLaunch = v; persist() }
     fun updateGlobalProxyMode(v: Boolean) { globalProxyMode = v; persist() }
     fun updateInvertAppProxy(v: Boolean) { invertAppProxy = v; persist() }
+
+    fun setThemeId(id: com.vpegs.ms.ui.theme.AppThemeId) {
+        themeId = id
+        appContext?.let { Prefs.saveThemeId(it, id.name) }
+    }
+    fun setPingSeconds(sec: Int) {
+        pingSeconds = sec.coerceIn(1, 15)
+        appContext?.let { Prefs.savePingSeconds(it, pingSeconds) }
+    }
+
+    fun refreshVpnPresence(ctx: Context) {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        var vpn = false
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            cm.allNetworks.forEach { n ->
+                val caps = cm.getNetworkCapabilities(n)
+                if (caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true) {
+                    vpn = true
+                }
+            }
+        }
+        systemVpnActive = vpn && VpEgsVpnService.isConnected
+        otherVpnActive = vpn && !VpEgsVpnService.isConnected
+        if (VpEgsVpnService.isConnected && connState != ConnState.CONNECTED) {
+            connState = ConnState.CONNECTED
+            startStats()
+        } else if (!VpEgsVpnService.isConnected && connState == ConnState.CONNECTED) {
+            connState = ConnState.DISCONNECTED
+        }
+    }
 
     fun addSubscription(name: String, url: String) {
         val subId = UUID.randomUUID().toString()
@@ -444,6 +499,12 @@ class MainViewModel : ViewModel() {
     }
     fun toggleAppProxy(pkg: String) {
         appProxyList = appProxyList.map { if (it.packageName == pkg) it.copy(proxyEnabled = !it.proxyEnabled) else it }
+        // proxyEnabled=false → bypass VPN when global mode
+        val bypass = appProxyList.filter { !it.proxyEnabled }.map { it.packageName }.toSet()
+        appContext?.let {
+            Prefs.saveBypassPackages(it, bypass)
+            Prefs.saveSettings(it, globalProxyMode, invertAppProxy, autoUpdateOnLaunch)
+        }
     }
 
     fun fmtBytes(b: Long) = when {
@@ -473,7 +534,7 @@ class MainViewModel : ViewModel() {
                 val list = withContext(Dispatchers.IO) {
                     val pm = context.packageManager
                     val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                    val enabledMap = appProxyList.associate { it.packageName to it.proxyEnabled }
+                    val bypass = Prefs.loadBypassPackages(context)
                     apps
                         .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
                         .map { ai ->
@@ -484,7 +545,8 @@ class MainViewModel : ViewModel() {
                                 packageName = ai.packageName,
                                 appName = name,
                                 isSystem = isSystem,
-                                proxyEnabled = enabledMap[ai.packageName] ?: true,
+                                // false = bypass VPN (direct)
+                                proxyEnabled = ai.packageName !in bypass,
                                 icon = icon
                             )
                         }

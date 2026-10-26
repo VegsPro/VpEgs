@@ -14,6 +14,7 @@ import android.service.quicksettings.TileService
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import com.vpegs.ms.MainActivity
+import com.vpegs.ms.R
 import com.vpegs.ms.vpn.VpEgsVpnService
 
 /**
@@ -102,7 +103,11 @@ class VpEgsTileService : TileService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             tile.subtitle = subtitle
         }
-        tile.icon = Icon.createWithBitmap(textIcon("V", on))
+        tile.icon = try {
+            Icon.createWithResource(this, R.drawable.ic_tile_v)
+        } catch (_: Exception) {
+            Icon.createWithBitmap(textIcon("V", on))
+        }
         tile.updateTile()
     }
 

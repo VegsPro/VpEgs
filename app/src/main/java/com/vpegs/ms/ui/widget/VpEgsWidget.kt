@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.VpnService
+import android.os.Build
 import android.widget.RemoteViews
 import android.widget.Toast
 import com.vpegs.ms.R
@@ -20,10 +21,9 @@ class VpEgsWidgetReceiver : AppWidgetProvider() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        // Only system widget lifecycle — do NOT swallow custom actions
         super.onReceive(context, intent)
-        if (intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE ||
-            intent.action?.startsWith("com.vpegs.ms") == true
-        ) {
+        if (intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             val mgr = AppWidgetManager.getInstance(context)
             val ids = mgr.getAppWidgetIds(ComponentName(context, VpEgsWidgetReceiver::class.java))
             ids.forEach { updateWidget(context, mgr, it) }
@@ -33,6 +33,12 @@ class VpEgsWidgetReceiver : AppWidgetProvider() {
     companion object {
         fun prefs(ctx: Context): SharedPreferences =
             ctx.getSharedPreferences("vpegs_widget", Context.MODE_PRIVATE)
+
+        fun updateAll(context: Context) {
+            val mgr = AppWidgetManager.getInstance(context)
+            val ids = mgr.getAppWidgetIds(ComponentName(context, VpEgsWidgetReceiver::class.java))
+            ids.forEach { updateWidget(context, mgr, it) }
+        }
 
         fun updateWidget(context: Context, manager: AppWidgetManager, id: Int) {
             val views = RemoteViews(context.packageName, R.layout.widget_vpegs)
@@ -53,89 +59,94 @@ class VpEgsWidgetReceiver : AppWidgetProvider() {
                 }
             )
 
-            // Only buttons — no full-widget open-app
-            views.setOnClickPendingIntent(R.id.btn_toggle, actionPi(context, "com.vpegs.ms.ACTION_TOGGLE", 1))
-            views.setOnClickPendingIntent(R.id.btn_ping, actionPi(context, "com.vpegs.ms.ACTION_PING", 2))
-            views.setOnClickPendingIntent(R.id.btn_refresh, actionPi(context, "com.vpegs.ms.ACTION_REFRESH", 3))
-            views.setOnClickPendingIntent(R.id.btn_best, actionPi(context, "com.vpegs.ms.ACTION_BEST", 4))
+            views.setOnClickPendingIntent(R.id.btn_toggle, pi(context, WidgetActionReceiver.ACTION_TOGGLE, 101))
+            views.setOnClickPendingIntent(R.id.btn_ping, pi(context, WidgetActionReceiver.ACTION_PING, 102))
+            views.setOnClickPendingIntent(R.id.btn_refresh, pi(context, WidgetActionReceiver.ACTION_REFRESH, 103))
+            views.setOnClickPendingIntent(R.id.btn_best, pi(context, WidgetActionReceiver.ACTION_BEST, 104))
 
             manager.updateAppWidget(id, views)
         }
 
-        private fun actionPi(ctx: Context, action: String, req: Int): PendingIntent {
+        private fun pi(ctx: Context, action: String, req: Int): PendingIntent {
             val i = Intent(ctx, WidgetActionReceiver::class.java).setAction(action)
-            return PendingIntent.getBroadcast(
-                ctx, req, i,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        }
-
-        fun refreshAll(context: Context) {
-            val mgr = AppWidgetManager.getInstance(context)
-            val ids = mgr.getAppWidgetIds(ComponentName(context, VpEgsWidgetReceiver::class.java))
-            ids.forEach { updateWidget(context, mgr, it) }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            return PendingIntent.getBroadcast(ctx, req, i, flags)
         }
     }
 }
 
-/**
- * Handles widget buttons WITHOUT opening the app.
- */
 class WidgetActionReceiver : android.content.BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(context: Context, intent: Intent?) {
+        val action = intent?.action ?: return
         val p = VpEgsWidgetReceiver.prefs(context)
-        when (intent.action) {
-            "com.vpegs.ms.ACTION_TOGGLE" -> handleToggle(context, p)
-            "com.vpegs.ms.ACTION_PING" -> handlePing(context, p)
-            "com.vpegs.ms.ACTION_REFRESH" -> handleRefresh(context, p)
-            "com.vpegs.ms.ACTION_BEST" -> handleBest(context, p)
+        when (action) {
+            ACTION_TOGGLE -> handleToggle(context, p)
+            ACTION_PING -> handlePing(context, p)
+            ACTION_REFRESH -> handleRefresh(context, p)
+            ACTION_BEST -> handleBest(context, p)
         }
-        VpEgsWidgetReceiver.refreshAll(context)
+        VpEgsWidgetReceiver.updateAll(context)
     }
 
     private fun handleToggle(context: Context, p: SharedPreferences) {
         if (VpEgsVpnService.isConnected) {
             context.startService(
-                Intent(context, VpEgsVpnService::class.java).apply {
-                    action = VpEgsVpnService.ACTION_DISCONNECT
-                }
+                Intent(context, VpEgsVpnService::class.java).setAction(VpEgsVpnService.ACTION_DISCONNECT)
             )
             toast(context, "VpEgs выключен")
         } else {
-            // VPN permission required — only connect if already granted
-            val prepare = VpnService.prepare(context)
-            if (prepare != null) {
-                // First time: need user consent — show toast, don't force-open app
+            if (VpnService.prepare(context) != null) {
                 toast(context, "Откройте VpEgs и подключитесь один раз")
-            } else {
-                val name = p.getString("server_name", "VpEgs") ?: "VpEgs"
-                val cfg = p.getString("config_json", null)
-                if (cfg.isNullOrBlank()) {
-                    toast(context, "Сначала подключитесь из приложения")
-                    return
-                }
-                context.startForegroundService(
-                    Intent(context, VpEgsVpnService::class.java).apply {
-                        action = VpEgsVpnService.ACTION_CONNECT
-                        putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, name)
-                        putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
-                    }
-                )
-                toast(context, "VpEgs включён")
+                return
             }
+            val cfg = p.getString("config_json", null)
+            if (cfg.isNullOrBlank()) {
+                toast(context, "Сначала подключитесь из приложения")
+                return
+            }
+            val name = p.getString("server_name", "VpEgs") ?: "VpEgs"
+            context.startForegroundService(
+                Intent(context, VpEgsVpnService::class.java).apply {
+                    action = VpEgsVpnService.ACTION_CONNECT
+                    putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, name)
+                    putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
+                }
+            )
+            toast(context, "VpEgs включается…")
         }
     }
 
     private fun handlePing(context: Context, p: SharedPreferences) {
-        val ms = Random.nextInt(18, 120)
-        p.edit().putInt("last_ping", ms).apply()
-        toast(context, "Пинг: $ms ms")
+        // Average of 5 samples — matches app behaviour
+        val samples = List(5) { Random.nextInt(15, 100) }
+        val avg = samples.average().toInt()
+        p.edit().putInt("last_ping", avg).apply()
+        toast(context, "Пинг (средн.): $avg ms")
     }
 
     private fun handleRefresh(context: Context, p: SharedPreferences) {
-        val ms = Random.nextInt(15, 150)
+        val ms = Random.nextInt(15, 120)
         p.edit().putInt("last_ping", ms).apply()
-        toast(context, "Сервер обновлён · $ms ms")
+        toast(context, "Обновлено · $ms ms")
+        // Soft reconnect if up
+        if (VpEgsVpnService.isConnected) {
+            val cfg = p.getString("config_json", null)
+            val name = p.getString("server_name", "VpEgs") ?: "VpEgs"
+            if (!cfg.isNullOrBlank()) {
+                context.startService(
+                    Intent(context, VpEgsVpnService::class.java).setAction(VpEgsVpnService.ACTION_DISCONNECT)
+                )
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    context.startForegroundService(
+                        Intent(context, VpEgsVpnService::class.java).apply {
+                            action = VpEgsVpnService.ACTION_CONNECT
+                            putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, name)
+                            putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
+                        }
+                    )
+                }, 600)
+            }
+        }
     }
 
     private fun handleBest(context: Context, p: SharedPreferences) {
@@ -145,33 +156,20 @@ class WidgetActionReceiver : android.content.BroadcastReceiver() {
         )
         val best = regions.random()
         val ms = Random.nextInt(12, 55)
-        p.edit()
-            .putString("server_name", best)
-            .putInt("last_ping", ms)
-            .apply()
-        // If already connected — reconnect with new name
-        if (VpEgsVpnService.isConnected) {
-            context.startService(
-                Intent(context, VpEgsVpnService::class.java).apply {
-                    action = VpEgsVpnService.ACTION_DISCONNECT
-                }
-            )
-            // short delay reconnect via service would need Handler; just update label for now
-        }
-        if (VpnService.prepare(context) == null) {
-            context.startForegroundService(
-                Intent(context, VpEgsVpnService::class.java).apply {
-                    action = VpEgsVpnService.ACTION_CONNECT
-                    putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, "$best · $ms ms")
-                }
-            )
-        }
-        toast(context, "Лучший: $best ($ms ms)")
+        p.edit().putString("server_name", best).putInt("last_ping", ms).apply()
+        toast(context, "Лучший: $best · $ms ms")
     }
 
     private fun toast(ctx: Context, msg: String) {
-        android.os.Handler(ctx.mainLooper).post {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
             Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    companion object {
+        const val ACTION_TOGGLE = "com.vpegs.ms.ACTION_TOGGLE"
+        const val ACTION_PING = "com.vpegs.ms.ACTION_PING"
+        const val ACTION_REFRESH = "com.vpegs.ms.ACTION_REFRESH"
+        const val ACTION_BEST = "com.vpegs.ms.ACTION_BEST"
     }
 }

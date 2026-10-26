@@ -18,6 +18,8 @@
         <!-- Power / status -->
         <FrameLayout
             android:id="@+id/btn_toggle"
+            android:clickable="true"
+            android:focusable="true"
             android:layout_width="52dp"
             android:layout_height="52dp"
             android:background="@drawable/widget_btn_circle">
@@ -69,6 +71,8 @@
 
         <ImageView
             android:id="@+id/btn_ping"
+            android:clickable="true"
+            android:focusable="true"
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:padding="8dp"
@@ -79,6 +83,8 @@
 
         <ImageView
             android:id="@+id/btn_refresh"
+            android:clickable="true"
+            android:focusable="true"
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:layout_marginStart="16dp"
@@ -90,6 +96,8 @@
 
         <ImageView
             android:id="@+id/btn_best"
+            android:clickable="true"
+            android:focusable="true"
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:layout_marginStart="16dp"

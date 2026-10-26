@@ -1,7 +1,12 @@
 package com.vpegs.ms.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -9,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.vpegs.ms.ui.components.GlassCard
@@ -17,9 +23,95 @@ import com.vpegs.ms.viewmodel.MainViewModel
 
 @Composable
 fun SettingsScreen(vm: MainViewModel) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 32.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .padding(top = 8.dp, bottom = 32.dp)
+    ) {
         Text("Настройки", style = MaterialTheme.typography.titleLarge, color = GlassText)
         Spacer(Modifier.height(12.dp))
+
+        // Theme
+        Text("Оформление", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Spacer(Modifier.height(8.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Text("Тема", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+            Spacer(Modifier.height(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppThemeId.entries.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        row.forEach { id ->
+                            val selected = vm.themeId == id
+                            val p = paletteFor(id)
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (selected) p.primary.copy(0.25f) else p.surface)
+                                    .border(
+                                        1.dp,
+                                        if (selected) p.primary else p.border,
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { vm.setThemeId(id) }
+                                    .padding(10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        Modifier
+                                            .size(14.dp)
+                                            .clip(CircleShape)
+                                            .background(p.primary)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        id.title,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (selected) p.primary else GlassText
+                                    )
+                                }
+                            }
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Text("Пинг", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Spacer(Modifier.height(8.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Text(
+                "Средний пинг за ${vm.pingSeconds} с",
+                style = MaterialTheme.typography.bodyLarge,
+                color = GlassText
+            )
+            Text(
+                "Несколько замеров, показывается среднее",
+                style = MaterialTheme.typography.labelMedium,
+                color = GlassTextMuted
+            )
+            Spacer(Modifier.height(8.dp))
+            Slider(
+                value = vm.pingSeconds.toFloat(),
+                onValueChange = { vm.setPingSeconds(it.toInt()) },
+                valueRange = 1f..15f,
+                steps = 13,
+                colors = SliderDefaults.colors(
+                    thumbColor = GlassAccent,
+                    activeTrackColor = GlassPrimary
+                )
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("1 с", color = GlassTextMuted, style = MaterialTheme.typography.labelSmall)
+                Text("15 с", color = GlassTextMuted, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
         GlassCard(Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Update, null, tint = GlassPrimary)
@@ -28,49 +120,34 @@ fun SettingsScreen(vm: MainViewModel) {
                     Text("Автообновление подписок", style = MaterialTheme.typography.bodyLarge, color = GlassText)
                     Text("При каждом запуске", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
                 }
-                Switch(checked = vm.autoUpdateOnLaunch, onCheckedChange = { vm.updateAutoUpdateOnLaunch(it) },
-                    colors = SwitchDefaults.colors(checkedThumbColor = GlassAccent, checkedTrackColor = GlassAccent.copy(0.35f)))
+                Switch(
+                    checked = vm.autoUpdateOnLaunch,
+                    onCheckedChange = { vm.updateAutoUpdateOnLaunch(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = GlassAccent,
+                        checkedTrackColor = GlassAccent.copy(0.35f)
+                    )
+                )
             }
         }
-        Spacer(Modifier.height(16.dp))
-        Text("Протоколы", style = MaterialTheme.typography.titleMedium, color = GlassText)
-        Spacer(Modifier.height(8.dp))
-        GlassCard(Modifier.fillMaxWidth()) {
-            Proto("VLESS / Reality", "Xray · Reality · Vision")
-            Proto("VMess", "V2Ray")
-            Proto("Trojan", "TLS + Trojan")
-            Proto("Shadowsocks", "AEAD")
-            Proto("Hysteria2", "UDP · высокая скорость")
-            Proto("TUIC", "QUIC")
-        }
+
         Spacer(Modifier.height(16.dp))
         Text("О VpEgs", style = MaterialTheme.typography.titleMedium, color = GlassText)
         Spacer(Modifier.height(8.dp))
         GlassCard(Modifier.fillMaxWidth()) {
-            Info(Icons.Outlined.Info, "VpEgs", "v1.0.0 · Glass Black-Blue")
+            Info(Icons.Outlined.Info, "VpEgs", "v1.4.1 · multi-theme")
             Info(Icons.Outlined.Security, "Конфиденциальность", "Данные только на устройстве")
-            Info(Icons.Outlined.Widgets, "Виджет", "Пинг · Обновить · Лучший сервер")
+            Info(Icons.Outlined.Widgets, "Виджет", "Пинг · Обновить · Лучший")
         }
-        Spacer(Modifier.height(20.dp))
-        Text("VpEgs — личный клиент для ваших подписок и конфигов.\nGlass-стиль · виджет · выбор лучшего сервера по пингу.",
-            style = MaterialTheme.typography.bodyMedium, color = GlassTextMuted)
-    }
-}
-
-@Composable
-private fun Proto(name: String, desc: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(name, style = MaterialTheme.typography.bodyLarge, color = GlassText)
-            Text(desc, style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
-        }
-        Text("✓", color = GlassAccent)
     }
 }
 
 @Composable
 private fun Info(icon: ImageVector, title: String, sub: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Icon(icon, null, tint = GlassPrimary, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Column {

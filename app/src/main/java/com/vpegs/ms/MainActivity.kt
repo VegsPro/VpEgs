@@ -38,10 +38,28 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            VpEgsTheme {
-                val vm: MainViewModel = viewModel()
-                LaunchedEffect(Unit) { vm.load(applicationContext) }
-                vmRef = vm
+            val vm: MainViewModel = viewModel()
+            vmRef = vm
+            VpEgsTheme(themeId = vm.themeId) {
+                LaunchedEffect(Unit) {
+                    vm.load(applicationContext)
+                    vm.refreshVpnPresence(applicationContext)
+                }
+                DisposableEffect(Unit) {
+                    val filter = android.content.IntentFilter(com.vpegs.ms.vpn.VpEgsVpnService.ACTION_STATE_CHANGED)
+                    val rec = object : android.content.BroadcastReceiver() {
+                        override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+                            vm.refreshVpnPresence(applicationContext)
+                        }
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        registerReceiver(rec, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+                    } else {
+                        @Suppress("UnspecifiedRegisterReceiverFlag")
+                        registerReceiver(rec, filter)
+                    }
+                    onDispose { try { unregisterReceiver(rec) } catch (_: Exception) {} }
+                }
                 VpEgsApp(vm)
             }
         }

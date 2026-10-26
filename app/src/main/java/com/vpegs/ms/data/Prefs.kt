@@ -155,4 +155,22 @@ object Prefs {
     fun loadGlobalProxy(ctx: Context) = sp(ctx).getBoolean("global_proxy", true)
     fun loadInvertProxy(ctx: Context) = sp(ctx).getBoolean("invert_proxy", false)
     fun loadAutoUpdate(ctx: Context) = sp(ctx).getBoolean("auto_update", true)
+
+    fun saveThemeId(ctx: Context, id: String) {
+        sp(ctx).edit().putString("theme_id", id).apply()
+    }
+    fun loadThemeId(ctx: Context): String =
+        sp(ctx).getString("theme_id", "DARK_BLUE") ?: "DARK_BLUE"
+
+    fun savePingSeconds(ctx: Context, sec: Int) {
+        sp(ctx).edit().putInt("ping_seconds", sec.coerceIn(1, 15)).apply()
+    }
+    fun loadPingSeconds(ctx: Context): Int =
+        sp(ctx).getInt("ping_seconds", 5).coerceIn(1, 15)
+
+    fun saveBypassPackages(ctx: Context, pkgs: Set<String>) {
+        sp(ctx).edit().putStringSet("bypass_pkgs", pkgs).apply()
+    }
+    fun loadBypassPackages(ctx: Context): Set<String> =
+        sp(ctx).getStringSet("bypass_pkgs", emptySet()) ?: emptySet()
 }

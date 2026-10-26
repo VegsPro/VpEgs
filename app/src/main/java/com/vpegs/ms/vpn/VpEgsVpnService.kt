@@ -137,7 +137,49 @@ class VpEgsVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try { builder.setMetered(false) } catch (_: Exception) {}
         }
+        // Always exclude ourselves so Xray/hev can reach the internet
         try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
+
+        // Per-app routing from prefs
+        try {
+            val sp = getSharedPreferences("vpegs_data", MODE_PRIVATE)
+            val global = sp.getBoolean("global_proxy", true)
+            val invert = sp.getBoolean("invert_proxy", false)
+            val bypass = sp.getStringSet("bypass_pkgs", emptySet()) ?: emptySet()
+            // Also collect from app_proxy_enabled style if stored separately
+            if (global) {
+                // All apps through VPN EXCEPT bypass list (and invert flips meaning)
+                val toBypass = if (invert) {
+                    // invert: only listed apps go through VPN → allowed list mode
+                    emptySet()
+                } else {
+                    bypass
+                }
+                if (invert) {
+                    // Only selected packages through VPN
+                    val only = bypass
+                    if (only.isNotEmpty()) {
+                        only.forEach { pkg ->
+                            try { builder.addAllowedApplication(pkg) } catch (_: Exception) {}
+                        }
+                    }
+                } else {
+                    toBypass.forEach { pkg ->
+                        try { builder.addDisallowedApplication(pkg) } catch (_: Exception) {}
+                    }
+                }
+            } else {
+                // Selective mode: only listed apps through VPN
+                if (bypass.isNotEmpty()) {
+                    bypass.forEach { pkg ->
+                        try { builder.addAllowedApplication(pkg) } catch (_: Exception) {}
+                    }
+                }
+            }
+            Log.i(TAG, "routing global=$global invert=$invert bypass=${bypass.size}")
+        } catch (e: Exception) {
+            Log.w(TAG, "routing setup: ${e.message}")
+        }
 
         val pfd = try {
             builder.establish()
