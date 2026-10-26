@@ -72,7 +72,7 @@ class VpEgsVpnService : VpnService() {
         ensureGeoAssets()
         val files = filesDir.absolutePath
         try {
-            Libv2ray.initCoreEnv(files, files)
+            Libv2ray.initCoreEnv(files, "")  // 2nd arg = xudp basekey, must be empty or valid base64
             Libv2ray.touch()
         } catch (e: Throwable) {
             fail("Libv2ray init: ${e.message}"); stopSelf(); return
