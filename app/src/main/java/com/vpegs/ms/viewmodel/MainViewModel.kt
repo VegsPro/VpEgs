@@ -154,55 +154,53 @@ class MainViewModel : ViewModel() {
         val server = selectedServer ?: return
         val cfg = configByServerId[server.id]
         if (cfg.isNullOrBlank()) {
-            lastError = "Нет конфига у сервера — обнови подписку"
+            lastError = "Нет конфига — обнови подписку"
             connState = ConnState.DISCONNECTED
             return
         }
         lastError = null
+        VpEgsVpnService.lastError = null
+        VpEgsVpnService.isConnected = false
         connState = ConnState.CONNECTING
         val app = ctx.applicationContext
-        val filter = android.content.IntentFilter(VpEgsVpnService.ACTION_STATE_CHANGED)
-        val receiver = object : android.content.BroadcastReceiver() {
-            override fun onReceive(c: Context?, intent: Intent?) {
-                val connected = intent?.getBooleanExtra("connected", false) == true
-                val err = intent?.getStringExtra("error")
-                try { app.unregisterReceiver(this) } catch (_: Exception) {}
-                if (!err.isNullOrBlank()) lastError = err
-                if (connected) {
-                    connState = ConnState.CONNECTED
-                    startStats()
-                } else {
-                    connState = ConnState.DISCONNECTED
-                    if (lastError == null) lastError = "VPN не поднялся"
-                }
-            }
-        }
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            app.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            app.registerReceiver(receiver, filter)
-        }
         val i = Intent(app, VpEgsVpnService::class.java).apply {
             action = VpEgsVpnService.ACTION_CONNECT
             putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, "${server.flag} ${server.name}")
             putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
         }
-        app.startForegroundService(i)
+        try {
+            app.startForegroundService(i)
+        } catch (e: Exception) {
+            lastError = "startService: ${e.message}"
+            connState = ConnState.DISCONNECTED
+            return
+        }
         try {
             app.getSharedPreferences("vpegs_widget", Context.MODE_PRIVATE).edit()
                 .putString("server_name", "${server.flag} ${server.name}")
                 .putString("config_json", cfg)
                 .apply()
         } catch (_: Exception) {}
-        // timeout
+
         viewModelScope.launch {
-            delay(15_000)
-            if (connState == ConnState.CONNECTING) {
-                try { app.unregisterReceiver(receiver) } catch (_: Exception) {}
-                lastError = "Таймаут подключения"
-                connState = ConnState.DISCONNECTED
+            // Poll service state up to 20s
+            repeat(40) {
+                delay(500)
+                if (VpEgsVpnService.isConnected) {
+                    lastError = null
+                    connState = ConnState.CONNECTED
+                    startStats()
+                    return@launch
+                }
+                val err = VpEgsVpnService.lastError
+                if (!err.isNullOrBlank()) {
+                    lastError = err
+                    connState = ConnState.DISCONNECTED
+                    return@launch
+                }
             }
+            lastError = VpEgsVpnService.lastError ?: "Таймаут (сервис молчит)"
+            connState = ConnState.DISCONNECTED
         }
     }
 

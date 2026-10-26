@@ -19,17 +19,10 @@ import libv2ray.Libv2ray
 import java.io.File
 import java.io.FileOutputStream
 
-/**
- * Pure Xray TUN mode:
- * 1) VpnService.establish() → TUN fd
- * 2) Libv2ray StartLoop(config, fd) sets xray.tun.fd
- * 3) Config has inbound protocol "tun" so Xray reads the fd
- */
 class VpEgsVpnService : VpnService() {
 
     private var tunInterface: ParcelFileDescriptor? = null
     private var controller: CoreController? = null
-    private var running = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -37,105 +30,137 @@ class VpEgsVpnService : VpnService() {
                 val name = intent.getStringExtra(EXTRA_SERVER_NAME) ?: "VpEgs"
                 val config = intent.getStringExtra(EXTRA_CONFIG_JSON)
                 if (config.isNullOrBlank()) {
-                    broadcast(false, "Пустой конфиг")
+                    fail("Пустой конфиг")
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                Thread { startVpn(name, config) }.start()
+                // Must call startForeground quickly
+                createNotificationChannel()
+                startForeground(NOTIFICATION_ID, buildNotification(name, "запуск…"))
+                Thread({
+                    try {
+                        startVpn(name, config)
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "thread", e)
+                        fail(e.message ?: e.javaClass.simpleName)
+                        stopVpnInternal()
+                        stopSelf()
+                    }
+                }, "vpegs-vpn").start()
             }
-            ACTION_DISCONNECT -> stopVpn()
+            ACTION_DISCONNECT -> {
+                stopVpnInternal()
+                isConnected = false
+                lastError = null
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
         }
         return START_STICKY
     }
 
     private fun startVpn(serverName: String, configJson: String) {
-        if (running) stopVpnInternal()
-        createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification(serverName, "запуск…"))
+        if (isConnected) stopVpnInternal()
 
+        ensureGeoAssets()
+        val files = filesDir.absolutePath
         try {
-            ensureGeoAssets()
-            val files = filesDir.absolutePath
             Libv2ray.initCoreEnv(files, files)
             Libv2ray.touch()
-
-            // 1) System TUN first
-            val builder = Builder()
-                .setSession("VpEgs · $serverName")
-                .setMtu(1500)
-                .addAddress("10.8.0.2", 30)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer("1.1.1.1")
-                .addDnsServer("8.8.8.8")
-                .setBlocking(true)
-
-            try {
-                builder.addAddress("fd00:8:8:8::2", 126)
-                builder.addRoute("::", 0)
-            } catch (_: Exception) {}
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
-            // Critical: Xray outbound must NOT go through TUN (loop)
-            try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
-
-            tunInterface = builder.establish()
-            val pfd = tunInterface
-            if (pfd == null) {
-                broadcast(false, "Android не выдал TUN (закрой другое VPN)")
-                stopSelf()
-                return
-            }
-            val fd = pfd.fd
-            Log.i(TAG, "TUN established fd=$fd")
-
-            // 2) Xray config with tun inbound
-            val adapted = TunConfigAdapter.adapt(configJson)
-            Log.i(TAG, "Xray ${Libv2ray.checkVersionX()} cfg=${adapted.length}")
-            Log.d(TAG, "cfg preview: ${adapted.take(400)}")
-
-            val cb = object : CoreCallbackHandler {
-                override fun onEmitStatus(l: Long, s: String?): Long {
-                    Log.d(TAG, "xray: $s"); return 0
-                }
-                override fun shutdown(): Long = 0
-                override fun startup(): Long = 0
-            }
-            val ctrl = Libv2ray.newCoreController(cb)
-
-            // Also set both env names before start (belt and suspenders)
-            try {
-                System.setProperty("xray.tun.fd", fd.toString())
-            } catch (_: Exception) {}
-
-            try {
-                ctrl.startLoop(adapted, fd)
-            } catch (e: Exception) {
-                Log.e(TAG, "startLoop failed", e)
-                stopVpnInternal()
-                broadcast(false, "Xray: ${e.message?.take(80)}")
-                stopSelf()
-                return
-            }
-            controller = ctrl
-
-            running = true
-            isConnected = true
-            currentServerName = serverName
-            currentConfigJson = configJson
-            startForeground(NOTIFICATION_ID, buildNotification(serverName, "Xray TUN"))
-            broadcast(true, null)
-            try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
-            Log.i(TAG, "VPN fully up via Xray TUN")
-        } catch (e: Exception) {
-            Log.e(TAG, "startVpn", e)
-            stopVpnInternal()
-            broadcast(false, e.message?.take(80) ?: "ошибка VPN")
-            stopSelf()
+        } catch (e: Throwable) {
+            fail("Libv2ray init: ${e.message}")
+            stopSelf(); return
         }
+
+        val builder = Builder()
+            .setSession("VpEgs · $serverName")
+            .setMtu(1500)
+            .addAddress("10.8.0.2", 30)
+            .addRoute("0.0.0.0", 0)
+            .addDnsServer("1.1.1.1")
+            .addDnsServer("8.8.8.8")
+            .setBlocking(true)
+
+        try {
+            builder.addAddress("fd00:8:8:8::2", 126)
+            builder.addRoute("::", 0)
+        } catch (_: Exception) {}
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try { builder.setMetered(false) } catch (_: Exception) {}
+        }
+        try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
+
+        val pfd = try {
+            builder.establish()
+        } catch (e: Exception) {
+            fail("TUN establish: ${e.message}")
+            stopSelf(); return
+        }
+        if (pfd == null) {
+            fail("TUN = null (закрой другое VPN)")
+            stopSelf(); return
+        }
+        tunInterface = pfd
+        val fd = pfd.fd
+        Log.i(TAG, "TUN fd=$fd")
+
+        val adapted = try {
+            TunConfigAdapter.adapt(configJson)
+        } catch (e: Exception) {
+            fail("adapt: ${e.message}")
+            stopVpnInternal(); stopSelf(); return
+        }
+        Log.i(TAG, "Xray ${try { Libv2ray.checkVersionX() } catch (_: Exception) { "?" }} cfg=${adapted.length}")
+
+        val cb = object : CoreCallbackHandler {
+            override fun onEmitStatus(l: Long, s: String?): Long {
+                Log.d(TAG, "xray: $s"); return 0
+            }
+            override fun shutdown(): Long = 0
+            override fun startup(): Long = 0
+        }
+
+        val ctrl = try {
+            Libv2ray.newCoreController(cb)
+        } catch (e: Throwable) {
+            fail("newCoreController: ${e.message}")
+            stopVpnInternal(); stopSelf(); return
+        }
+
+        try {
+            // Pass TUN fd — lib sets xray.tun.fd; config has protocol:tun inbound
+            ctrl.startLoop(adapted, fd)
+        } catch (e: Throwable) {
+            Log.e(TAG, "startLoop", e)
+            fail("Xray startLoop: ${e.message?.take(100)}")
+            stopVpnInternal(); stopSelf(); return
+        }
+
+        // Confirm core thinks it's running
+        val running = try { ctrl.getIsRunning() } catch (_: Exception) { true }
+        if (!running) {
+            fail("Xray IsRunning=false")
+            stopVpnInternal(); stopSelf(); return
+        }
+
+        controller = ctrl
+        isConnected = true
+        lastError = null
+        currentServerName = serverName
+        currentConfigJson = configJson
+        startForeground(NOTIFICATION_ID, buildNotification(serverName, "Xray TUN"))
+        Log.i(TAG, "VPN UP")
+        try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
+    }
+
+    private fun fail(msg: String) {
+        Log.e(TAG, msg)
+        lastError = msg
+        isConnected = false
     }
 
     private fun stopVpnInternal() {
-        running = false
         try { controller?.stopLoop() } catch (_: Exception) {}
         controller = null
         try { tunInterface?.close() } catch (_: Exception) {}
@@ -144,29 +169,13 @@ class VpEgsVpnService : VpnService() {
         currentServerName = null
     }
 
-    private fun stopVpn() {
-        stopVpnInternal()
-        broadcast(false, null)
-        try { com.vpegs.ms.ui.tile.VpEgsTileService.requestUpdate(this) } catch (_: Exception) {}
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    private fun broadcast(connected: Boolean, error: String?) {
-        sendBroadcast(
-            Intent(ACTION_STATE_CHANGED)
-                .putExtra("connected", connected)
-                .putExtra("error", error)
-        )
-    }
-
     override fun onDestroy() {
         stopVpnInternal()
         super.onDestroy()
     }
 
     private fun ensureGeoAssets() {
-        for (name in listOf("geoip.dat", "geosite.dat", "geoip-only-cn-private.dat")) {
+        for (name in listOf("geoip.dat", "geosite.dat")) {
             val out = File(filesDir, name)
             if (out.exists() && out.length() > 1000) continue
             try {
@@ -211,6 +220,7 @@ class VpEgsVpnService : VpnService() {
         const val NOTIFICATION_ID = 42
 
         @Volatile var isConnected: Boolean = false
+        @Volatile var lastError: String? = null
         @Volatile var currentServerName: String? = null
         @Volatile var currentConfigJson: String? = null
     }
