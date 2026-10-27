@@ -77,6 +77,7 @@
 | | |
 |---|---|
 | Telegram | [**@mstrblock**](https://t.me/mstrblock) |
+| Windows | [VpEgs-Windows](https://github.com/VegsPro/VpEgs-Windows) |
 | GitHub | [VegsPro/VpEgs](https://github.com/VegsPro/VpEgs) |
 | Issues | [Сообщить о проблеме](https://github.com/VegsPro/VpEgs/issues) |
 
