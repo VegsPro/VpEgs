@@ -1009,41 +1009,45 @@ class MainViewModel : ViewModel() {
 
     fun checkForAppUpdate(ctx: Context) {
         viewModelScope.launch {
-            // Cleanup APKs for versions we already run
+            // Drop APKs for versions we already run
             AppUpdater.deleteCached(ctx, BuildConfig.VERSION_CODE)
             val remote = withContext(Dispatchers.IO) { AppUpdater.fetchLatest() } ?: return@launch
-            if (remote.versionCode <= BuildConfig.VERSION_CODE) {
+            // Only if strictly newer than installed APK
+            if (!AppUpdater.isNewer(remote)) {
                 updateAvailable = false
                 showUpdateBanner = false
+                updateDownloaded = false
+                updateApkPath = null
                 return@launch
             }
-            if (AppUpdater.isDismissed(ctx, remote.versionCode)) {
-                updateAvailable = true
-                updateVersionCode = remote.versionCode
-                updateVersionName = remote.versionName
+            updateVersionCode = remote.versionCode
+            updateVersionName = remote.versionName
+            updateAvailable = true
+
+            if (AppUpdater.isDismissed(ctx, remote.versionCode) ||
+                !AppUpdater.canOfferInstall(ctx, remote.versionCode)
+            ) {
                 showUpdateBanner = false
-                // keep button in settings if apk already on disk
-                val existing = AppUpdater.apkFile(ctx, remote.versionCode)
-                if (existing.exists() && existing.length() > 100_000) {
+                // Settings button only if apk already cached
+                if (AppUpdater.hasCachedApk(ctx, remote.versionCode)) {
                     updateDownloaded = true
-                    updateApkPath = existing.absolutePath
+                    updateApkPath = AppUpdater.apkFile(ctx, remote.versionCode).absolutePath
                 }
                 return@launch
             }
-            if (!AppUpdater.canOfferInstall(ctx, remote.versionCode)) {
-                showUpdateBanner = false
-                updateAvailable = false
+
+            showUpdateBanner = true
+            // Reuse cache — do not download the same version again
+            if (AppUpdater.hasCachedApk(ctx, remote.versionCode)) {
+                updateDownloaded = true
+                updateDownloading = false
+                updateProgress = 1f
+                updateApkPath = AppUpdater.apkFile(ctx, remote.versionCode).absolutePath
                 return@launch
             }
-            updateAvailable = true
-            updateVersionCode = remote.versionCode
-            updateVersionName = remote.versionName
-            showUpdateBanner = true
-            // Background download
             updateDownloading = true
-            val file = AppUpdater.download(ctx, remote) { p ->
-                updateProgress = p
-            }
+            updateProgress = 0f
+            val file = AppUpdater.download(ctx, remote) { p -> updateProgress = p }
             updateDownloading = false
             if (file != null) {
                 updateDownloaded = true

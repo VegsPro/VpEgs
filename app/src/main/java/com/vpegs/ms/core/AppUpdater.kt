@@ -15,7 +15,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Checks GitHub Releases for a newer APK, downloads to cache, installs via FileProvider.
+ * Checks GitHub Releases for a newer APK, downloads once to cache, installs via FileProvider.
+ * Never re-downloads the same versionCode if the file is already in cache.
  */
 object AppUpdater {
     private const val API =
@@ -24,24 +25,14 @@ object AppUpdater {
     private const val KEY_DISMISSED = "dismissed_version_code"
     private const val KEY_DECLINED = "declined_count_version"
     private const val KEY_DECLINED_N = "declined_n"
+    private const val KEY_LAST_REMOTE = "last_remote_code"
+    private const val KEY_CACHED_CODE = "cached_apk_code"
 
     data class RemoteInfo(
         val versionCode: Int,
         val versionName: String,
         val apkUrl: String,
         val tag: String
-    )
-
-    data class UpdateState(
-        val available: Boolean = false,
-        val downloaded: Boolean = false,
-        val downloading: Boolean = false,
-        val progress: Float = 0f,
-        val versionName: String = "",
-        val versionCode: Int = 0,
-        val apkFile: File? = null,
-        val showBanner: Boolean = false,
-        val error: String? = null
     )
 
     fun cacheDir(ctx: Context): File =
@@ -57,7 +48,6 @@ object AppUpdater {
         prefs(ctx).edit().putInt(KEY_DISMISSED, code).apply()
     }
 
-    /** Returns true if we should still offer install (declined fewer than 2 times for this code). */
     fun canOfferInstall(ctx: Context, code: Int): Boolean {
         val p = prefs(ctx)
         val v = p.getInt(KEY_DECLINED, 0)
@@ -74,12 +64,17 @@ object AppUpdater {
         if (n >= 2) dismiss(ctx, code)
     }
 
-    fun clearDecline(ctx: Context) {
-        prefs(ctx).edit().remove(KEY_DECLINED).remove(KEY_DECLINED_N).apply()
-    }
-
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** True only if remote is strictly newer than the installed APK. */
+    fun isNewer(remote: RemoteInfo): Boolean =
+        remote.versionCode > BuildConfig.VERSION_CODE
+
+    fun hasCachedApk(ctx: Context, code: Int): Boolean {
+        val f = apkFile(ctx, code)
+        return f.exists() && f.length() > 100_000L
+    }
 
     suspend fun fetchLatest(): RemoteInfo? = withContext(Dispatchers.IO) {
         try {
@@ -95,20 +90,14 @@ object AppUpdater {
             val tag = json.optString("tag_name", "")
             var code = 0
             var name = tag.removePrefix("v")
-            // CI tags: v41, v42… treat as versionCode
+            // CI tags: v48 → versionCode 48
             tag.removePrefix("v").toIntOrNull()?.let { code = it }
             val bodyText = json.optString("body", "")
             Regex("""versionCode\s*[=:]\s*(\d+)""", RegexOption.IGNORE_CASE)
-                .find(bodyText)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { code = it }
+                .find(bodyText)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { code = maxOf(code, it) }
             Regex("""versionName\s*[=:]\s*([0-9.]+)""", RegexOption.IGNORE_CASE)
                 .find(bodyText)?.groupValues?.getOrNull(1)?.let { name = it }
-            // tag like v1.8.0 or v40
-            if (tag.matches(Regex("""v?\d+\.\d+.*"""))) {
-                name = tag.removePrefix("v")
-            } else if (tag.matches(Regex("""v?(\d+)"""))) {
-                tag.filter { it.isDigit() }.toIntOrNull()?.let { code = maxOf(code, it) }
-            }
-            // Assets
+
             val assets = json.optJSONArray("assets") ?: return@withContext null
             var apkUrl = ""
             for (i in 0 until assets.length()) {
@@ -116,37 +105,33 @@ object AppUpdater {
                 val an = a.optString("name")
                 if (an.endsWith(".apk", true)) {
                     apkUrl = a.optString("browser_download_url")
-                    // versionCode from asset name vpegs-34.apk
-                    Regex("""(\d+)\.apk$""").find(an)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
-                        code = maxOf(code, it)
-                    }
                     break
                 }
             }
-            if (apkUrl.isBlank()) return@withContext null
-            // If still same code as tag number only
-            if (code <= BuildConfig.VERSION_CODE) {
-                // try published_at ordering: use release id as soft signal
-                val id = json.optInt("id", 0)
-                if (tag.removePrefix("v").all { it.isDigit() }) {
-                    code = tag.removePrefix("v").toIntOrNull() ?: code
-                } else if (id > 0 && code == BuildConfig.VERSION_CODE) {
-                    // compare versionName strings loosely
-                }
-            }
+            if (apkUrl.isBlank() || code <= 0) return@withContext null
             RemoteInfo(code, name.ifBlank { tag }, apkUrl, tag)
         } catch (_: Exception) {
             null
         }
     }
 
+    /**
+     * Download only if file for this versionCode is missing.
+     * Returns existing file immediately when already cached.
+     */
     suspend fun download(ctx: Context, info: RemoteInfo, onProgress: (Float) -> Unit): File? =
         withContext(Dispatchers.IO) {
             try {
                 val out = apkFile(ctx, info.versionCode)
-                if (out.exists() && out.length() > 100_000) {
+                if (out.exists() && out.length() > 100_000L) {
                     onProgress(1f)
+                    prefs(ctx).edit().putInt(KEY_CACHED_CODE, info.versionCode).apply()
                     return@withContext out
+                }
+                // purge other old apks
+                cacheDir(ctx).listFiles()?.forEach { f ->
+                    if (f.name.endsWith(".apk") && f != out) f.delete()
+                    if (f.name.endsWith(".part")) f.delete()
                 }
                 val tmp = File(out.absolutePath + ".part")
                 val conn = (URL(info.apkUrl).openConnection() as HttpURLConnection).apply {
@@ -170,7 +155,11 @@ object AppUpdater {
                     }
                 }
                 if (out.exists()) out.delete()
-                tmp.renameTo(out)
+                if (!tmp.renameTo(out)) {
+                    tmp.copyTo(out, overwrite = true)
+                    tmp.delete()
+                }
+                prefs(ctx).edit().putInt(KEY_CACHED_CODE, info.versionCode).apply()
                 onProgress(1f)
                 out
             } catch (_: Exception) {
@@ -197,19 +186,15 @@ object AppUpdater {
         }
     }
 
-    fun deleteCached(ctx: Context, code: Int) {
+    fun deleteCached(ctx: Context, installedCode: Int) {
         try {
-            apkFile(ctx, code).delete()
-            // also purge older
             cacheDir(ctx).listFiles()?.forEach { f ->
                 if (f.name.endsWith(".apk") || f.name.endsWith(".part")) {
                     val c = Regex("""vpegs-(\d+)""").find(f.name)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    if (c != null && c <= BuildConfig.VERSION_CODE) f.delete()
+                    if (c == null || c <= installedCode) f.delete()
                 }
             }
+            prefs(ctx).edit().putInt(KEY_CACHED_CODE, 0).apply()
         } catch (_: Exception) {}
     }
-
-    fun localVersionCode(): Int = BuildConfig.VERSION_CODE
-    fun localVersionName(): String = BuildConfig.VERSION_NAME
 }

@@ -47,17 +47,24 @@ fun GlassCard(
             .hazeEffect(
                 state = hazeState,
                 style = HazeStyle(
-                    backgroundColor = GlassSurfaceHigh.copy(alpha = 0.25f),
-                    tints = listOf(HazeTint(Color.White.copy(alpha = 0.08f))),
-                    blurRadius = 18.dp,
+                    backgroundColor = Color.Black.copy(alpha = 0.2f),
+                    tints = listOf(
+                        HazeTint(Color.White.copy(alpha = 0.1f)),
+                        HazeTint(GlassPrimary.copy(alpha = 0.08f))
+                    ),
+                    blurRadius = 22.dp,
                 )
             )
+            .background(Color.White.copy(alpha = 0.07f))
             .border(1.dp, Color.White.copy(alpha = 0.18f), shape)
-            .background(GlassSurfaceHigh.copy(alpha = 0.35f))
+    } else if (glassOn) {
+        mod
+            .background(GlassSurfaceHigh.copy(alpha = 0.55f))
+            .border(1.dp, Color.White.copy(alpha = 0.14f), shape)
     } else {
         mod
-            .background(if (glassOn) GlassSurfaceHigh.copy(alpha = 0.92f) else GlassSurfaceHigh)
-            .border(1.dp, if (glassOn) Color.White.copy(alpha = 0.12f) else GlassBorder, shape)
+            .background(GlassSurfaceHigh)
+            .border(1.dp, GlassBorder, shape)
     }
     mod = mod.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     Column(mod.padding(16.dp), content = content)

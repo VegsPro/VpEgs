@@ -1,85 +1,65 @@
 package com.vpegs.ms
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Subscriptions
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.vpegs.ms.ui.screens.*
-import com.vpegs.ms.ui.theme.GlassBg
-import com.vpegs.ms.ui.theme.LocalGlassEnabled
-import com.vpegs.ms.ui.theme.LocalHazeState
+import com.vpegs.ms.ui.theme.*
+import com.vpegs.ms.viewmodel.MainViewModel
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 
-import com.vpegs.ms.ui.theme.GlassPrimary
-import com.vpegs.ms.ui.theme.GlassPrimarySoft
-import com.vpegs.ms.ui.theme.GlassSurface
-import com.vpegs.ms.ui.theme.GlassTextMuted
-import com.vpegs.ms.ui.theme.VpEgsTheme
-import com.vpegs.ms.viewmodel.MainViewModel
-
 class MainActivity : ComponentActivity() {
-    private var vmRef: MainViewModel? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             val vm: MainViewModel = viewModel()
-            vmRef = vm
-            VpEgsTheme(themeId = vm.themeId) {
-                LaunchedEffect(Unit) {
-                    vm.load(applicationContext)
-                    vm.refreshVpnPresence(applicationContext)
-                }
-                DisposableEffect(Unit) {
-                    val filter = android.content.IntentFilter(com.vpegs.ms.vpn.VpEgsVpnService.ACTION_STATE_CHANGED)
-                    val rec = object : android.content.BroadcastReceiver() {
-                        override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
-                            vm.refreshVpnPresence(applicationContext)
-                        }
-                    }
-                    if (android.os.Build.VERSION.SDK_INT >= 33) {
-                        registerReceiver(rec, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
-                    } else {
-                        @Suppress("UnspecifiedRegisterReceiverFlag")
-                        registerReceiver(rec, filter)
-                    }
-                    onDispose { try { unregisterReceiver(rec) } catch (_: Exception) {} }
-                }
+            LaunchedEffect(Unit) { vm.load(applicationContext) }
+            LaunchedEffect(vm.themeId) { applyPalette(paletteFor(vm.themeId)) }
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    background = GlassBg,
+                    surface = GlassSurface,
+                    primary = GlassPrimary
+                )
+            ) {
                 VpEgsApp(vm)
             }
-        }
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == MainViewModel.REQ_VPN) {
-            vmRef?.onVpnPermissionResult(this, resultCode)
         }
     }
 }
@@ -105,54 +85,149 @@ fun VpEgsApp(vm: MainViewModel) {
         LocalGlassEnabled provides glassOn,
         LocalHazeState provides if (glassOn) hazeState else null
     ) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(GlassBg)
-            .then(if (glassOn) Modifier.hazeSource(state = hazeState) else Modifier)
-    ) {
-    Scaffold(
-        containerColor = Color.Transparent,
-        bottomBar = {
-            NavigationBar(containerColor = GlassSurface, contentColor = GlassPrimarySoft) {
-                items.forEach { s ->
-                    NavigationBarItem(
-                        selected = route == s.route,
-                        onClick = {
-                            nav.navigate(s.route) {
-                                popUpTo(nav.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(s.icon, s.title) },
-                        label = {
-                            Text(
-                                s.title,
-                                maxLines = 1,
-                                style = MaterialTheme.typography.labelSmall
+        Box(Modifier.fillMaxSize()) {
+            // Ambient gradient background (shows through glass)
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                GlassBg,
+                                GlassPrimary.copy(alpha = 0.12f),
+                                GlassBg,
+                                GlassAccent.copy(alpha = 0.08f),
+                                GlassBg
                             )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = GlassPrimary,
-                            selectedTextColor = GlassPrimarySoft,
-                            indicatorColor = GlassPrimary.copy(0.18f),
-                            unselectedIconColor = GlassTextMuted,
-                            unselectedTextColor = GlassTextMuted
                         )
+                    )
+                    .then(if (glassOn) Modifier.hazeSource(state = hazeState) else Modifier)
+            )
+
+            NavHost(
+                navController = nav,
+                startDestination = Screen.Home.route,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 88.dp),
+                enterTransition = {
+                    fadeIn(tween(280)) + slideInHorizontally(tween(320)) { it / 8 }
+                },
+                exitTransition = {
+                    fadeOut(tween(200)) + slideOutHorizontally(tween(280)) { -it / 12 }
+                },
+                popEnterTransition = {
+                    fadeIn(tween(280)) + slideInHorizontally(tween(320)) { -it / 8 }
+                },
+                popExitTransition = {
+                    fadeOut(tween(200)) + slideOutHorizontally(tween(280)) { it / 12 }
+                }
+            ) {
+                composable(Screen.Home.route) { HomeScreen(vm) }
+                composable(Screen.Servers.route) { ServersScreen(vm) }
+                composable(Screen.Subs.route) { SubscriptionsScreen(vm) }
+                composable(Screen.Apps.route) { AppsScreen(vm) }
+                composable(Screen.Settings.route) { SettingsScreen(vm) }
+            }
+
+            // Floating glass bottom bar (like music app screenshot)
+            GlassBottomBar(
+                items = items,
+                currentRoute = route,
+                glassOn = glassOn,
+                hazeState = hazeState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                onSelect = { s ->
+                    nav.navigate(s.route) {
+                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun GlassBottomBar(
+    items: List<Screen>,
+    currentRoute: String?,
+    glassOn: Boolean,
+    hazeState: HazeState,
+    modifier: Modifier = Modifier,
+    onSelect: (Screen) -> Unit
+) {
+    val shape = RoundedCornerShape(28.dp)
+    val barMod = modifier
+        .fillMaxWidth()
+        .height(64.dp)
+        .clip(shape)
+        .then(
+            if (glassOn) {
+                Modifier
+                    .hazeEffect(
+                        state = hazeState,
+                        style = HazeStyle(
+                            backgroundColor = Color.Black.copy(alpha = 0.25f),
+                            tints = listOf(
+                                HazeTint(Color.White.copy(alpha = 0.08f)),
+                                HazeTint(GlassPrimary.copy(alpha = 0.12f))
+                            ),
+                            blurRadius = 24.dp,
+                        )
+                    )
+                    .background(Color.White.copy(alpha = 0.06f))
+                    .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
+            } else {
+                Modifier
+                    .background(GlassSurface)
+                    .border(1.dp, GlassBorder, shape)
+            }
+        )
+
+    Row(
+        barMod.padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        items.forEach { s ->
+            val selected = currentRoute == s.route
+            val bg by animateColorAsState(
+                if (selected) GlassPrimary.copy(alpha = 0.22f) else Color.Transparent,
+                tween(220),
+                label = "navBg"
+            )
+            val tint by animateColorAsState(
+                if (selected) GlassPrimary else GlassTextMuted,
+                tween(220),
+                label = "navTint"
+            )
+            val interaction = remember { MutableInteractionSource() }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(vertical = 8.dp, horizontal = 2.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(bg)
+                    .clickable(indication = null, interactionSource = interaction) { onSelect(s) },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(s.icon, s.title, tint = tint, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        s.title,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = tint,
+                        maxLines = 1
                     )
                 }
             }
         }
-    ) { pad ->
-        NavHost(nav, Screen.Home.route, Modifier.padding(pad)) {
-            composable(Screen.Home.route) { HomeScreen(vm) }
-            composable(Screen.Servers.route) { ServersScreen(vm) }
-            composable(Screen.Subs.route) { SubscriptionsScreen(vm) }
-            composable(Screen.Apps.route) { AppsScreen(vm) }
-            composable(Screen.Settings.route) { SettingsScreen(vm) }
-        }
     }
-    } // Box
-    } // CompositionLocalProvider
 }
