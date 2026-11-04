@@ -52,32 +52,31 @@ class MainActivity : ComponentActivity() {
             val vm: MainViewModel = viewModel()
             LaunchedEffect(Unit) { vm.load(applicationContext) }
             // Apply theme synchronously on every recomposition so colors update immediately
+            // Theme without key() — keeps current screen (e.g. Settings) on change
             val themeId = vm.themeId
-            val palette = remember(themeId) { paletteFor(themeId) }
+            val palette = paletteFor(themeId)
             applyPalette(palette)
 
-            key(themeId) {
-                MaterialTheme(
-                    colorScheme = if (palette.isLight) {
-                        lightColorScheme(
-                            background = palette.bg,
-                            surface = palette.surface,
-                            primary = palette.primary,
-                            onBackground = palette.text,
-                            onSurface = palette.text
-                        )
-                    } else {
-                        darkColorScheme(
-                            background = palette.bg,
-                            surface = palette.surface,
-                            primary = palette.primary,
-                            onBackground = palette.text,
-                            onSurface = palette.text
-                        )
-                    }
-                ) {
-                    VpEgsApp(vm)
+            MaterialTheme(
+                colorScheme = if (palette.isLight) {
+                    lightColorScheme(
+                        background = palette.bg,
+                        surface = palette.surface,
+                        primary = palette.primary,
+                        onBackground = palette.text,
+                        onSurface = palette.text
+                    )
+                } else {
+                    darkColorScheme(
+                        background = palette.bg,
+                        surface = palette.surface,
+                        primary = palette.primary,
+                        onBackground = palette.text,
+                        onSurface = palette.text
+                    )
                 }
+            ) {
+                VpEgsApp(vm)
             }
         }
     }

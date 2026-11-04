@@ -16,6 +16,7 @@ import com.vpegs.ms.BuildConfig
 import com.vpegs.ms.core.AppUpdater
 import com.vpegs.ms.data.*
 import com.vpegs.ms.vpn.VpEgsVpnService
+import com.vpegs.ms.ui.tile.VpEgsTileService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -273,6 +274,7 @@ class MainViewModel : ViewModel() {
                     connState = ConnState.CONNECTED
                     startStats()
                     refreshPublicIp()
+                    appContext?.let { VpEgsTileService.requestUpdate(it) }
                     return@launch
                 }
                 val err = VpEgsVpnService.lastError
@@ -298,6 +300,7 @@ class MainViewModel : ViewModel() {
             connState = ConnState.DISCONNECTED
             stats = ConnectionStats()
             refreshPublicIp()
+            appContext?.let { VpEgsTileService.requestUpdate(it) }
         }
     }
 

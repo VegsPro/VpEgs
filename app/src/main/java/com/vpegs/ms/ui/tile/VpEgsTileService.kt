@@ -6,6 +6,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
@@ -17,75 +19,103 @@ import com.vpegs.ms.vpn.VpEgsVpnService
 @RequiresApi(Build.VERSION_CODES.N)
 class VpEgsTileService : TileService() {
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val refreshRunnable = Runnable { refreshTile() }
+
     override fun onStartListening() {
         super.onStartListening()
         refreshTile()
+        // Re-check shortly — system VPN network appears with a delay
+        mainHandler.removeCallbacks(refreshRunnable)
+        mainHandler.postDelayed(refreshRunnable, 400)
+        mainHandler.postDelayed(refreshRunnable, 1200)
+    }
+
+    override fun onStopListening() {
+        mainHandler.removeCallbacks(refreshRunnable)
+        super.onStopListening()
     }
 
     override fun onClick() {
         super.onClick()
         val tile = qsTile ?: return
-        val on = isVpnReallyOn()
+        val on = isVpEgsOn()
         if (on) {
+            // Disconnect our VPN
             startService(Intent(this, VpEgsVpnService::class.java).apply {
                 action = VpEgsVpnService.ACTION_DISCONNECT
             })
-            VpEgsVpnService.isConnected = false
+            // Optimistic UI; service confirms via requestUpdate
             applyState(tile, false)
+            mainHandler.postDelayed(refreshRunnable, 500)
+            mainHandler.postDelayed(refreshRunnable, 1500)
         } else {
             val prepare = VpnService.prepare(this)
             if (prepare != null) {
-                val open = Intent(this, MainActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        startActivityAndCollapse(open)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        startActivityAndCollapse(open)
-                    }
-                } catch (_: Exception) {
-                    startActivity(open)
-                }
+                openApp()
                 toast("Выдайте VPN-разрешение в приложении")
-            } else {
-                val p = getSharedPreferences("vpegs_widget", MODE_PRIVATE)
-                val name = p.getString("server_name", null)
-                    ?: VpEgsVpnService.currentServerName
-                    ?: "VpEgs"
-                val cfg = p.getString("config_json", null)
-                    ?: VpEgsVpnService.currentConfigJson
-                if (cfg.isNullOrBlank()) {
-                    toast("Сначала выберите сервер в приложении")
-                    startActivity(
-                        Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
-                } else {
-                    startForegroundService(Intent(this, VpEgsVpnService::class.java).apply {
-                        action = VpEgsVpnService.ACTION_CONNECT
-                        putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, name)
-                        putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
-                    })
-                    applyState(tile, true)
-                }
+                return
             }
+            val p = getSharedPreferences("vpegs_widget", MODE_PRIVATE)
+            val name = p.getString("server_name", null)
+                ?: VpEgsVpnService.currentServerName
+                ?: "VpEgs"
+            val cfg = p.getString("config_json", null)
+                ?: VpEgsVpnService.currentConfigJson
+            if (cfg.isNullOrBlank()) {
+                toast("Сначала выберите сервер в приложении")
+                openApp()
+                return
+            }
+            startForegroundService(Intent(this, VpEgsVpnService::class.java).apply {
+                action = VpEgsVpnService.ACTION_CONNECT
+                putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, name)
+                putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
+            })
+            applyState(tile, true)
+            mainHandler.postDelayed(refreshRunnable, 600)
+            mainHandler.postDelayed(refreshRunnable, 1800)
+        }
+    }
+
+    private fun openApp() {
+        val open = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startActivityAndCollapse(open)
+            } else {
+                @Suppress("DEPRECATION")
+                startActivityAndCollapse(open)
+            }
+        } catch (_: Exception) {
+            startActivity(open)
         }
     }
 
     private fun refreshTile() {
         val tile = qsTile ?: return
-        applyState(tile, isVpnReallyOn())
+        applyState(tile, isVpEgsOn())
     }
 
-    private fun isVpnReallyOn(): Boolean {
-        if (!VpEgsVpnService.isConnected) return false
+    /**
+     * Prefer our service flag; fall back to system VPN only if flag says on
+     * (avoids showing ACTIVE when another VPN is connected but VpEgs is off).
+     */
+    private fun isVpEgsOn(): Boolean {
+        if (VpEgsVpnService.isConnected) return true
+        // Service process may have been killed while OS still holds the VPN interface —
+        // only count as on if package is the active VPN owner when possible.
         return try {
-            val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
-            cm.allNetworks.any { n ->
-                cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
-            }
+            val cm = getSystemService(ConnectivityManager::class.java) ?: return false
+            val active = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(active) ?: return false
+            if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return false
+            // If any VPN is up but our flag is false, treat as OFF for this tile
+            // (user may have another VPN). Tile should only reflect VpEgs.
+            false
         } catch (_: Exception) {
-            VpEgsVpnService.isConnected
+            false
         }
     }
 
@@ -99,13 +129,14 @@ class VpEgsTileService : TileService() {
                 "Выкл"
             }
         }
-        // Transparent "V" — system draws the circular QS background
         tile.icon = Icon.createWithResource(this, R.drawable.ic_tile_v)
-        tile.updateTile()
+        try {
+            tile.updateTile()
+        } catch (_: Exception) {}
     }
 
     private fun toast(msg: String) {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
+        mainHandler.post {
             Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
         }
     }
