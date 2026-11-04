@@ -47,7 +47,7 @@ fun SubscriptionsScreen(vm: MainViewModel) {
             GlassProgressBar(vm.workProgress, Modifier.padding(bottom = 8.dp), label = vm.workStatus.ifBlank { null })
         }
         Spacer(Modifier.height(8.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 120.dp)) {
             items(vm.subscriptions, key = { it.id }) { sub ->
                 SubCard(
                     sub = sub,

@@ -35,7 +35,7 @@ fun SettingsScreen(vm: MainViewModel) {
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
-            .padding(top = 8.dp, bottom = 32.dp)
+            .padding(top = 8.dp, bottom = 120.dp)
     ) {
         Text("Настройки", style = MaterialTheme.typography.titleLarge, color = GlassText)
         Spacer(Modifier.height(12.dp))
@@ -203,8 +203,30 @@ fun SettingsScreen(vm: MainViewModel) {
         }
 
         Spacer(Modifier.height(16.dp))
+        Text("Обновление", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Spacer(Modifier.height(8.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            val ctx = LocalContext.current
+            Text(
+                "Текущая: ${com.vpegs.ms.BuildConfig.VERSION_NAME} (${com.vpegs.ms.BuildConfig.VERSION_CODE})",
+                style = MaterialTheme.typography.bodyMedium,
+                color = GlassText
+            )
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.material3.Button(
+                onClick = { vm.checkForAppUpdate(ctx.applicationContext) },
+                enabled = !vm.updateDownloading,
+                colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
+            ) {
+                Text(if (vm.updateDownloading) "Проверка…" else "Проверить обновление")
+            }
+            if (vm.updateDownloading) {
+                Spacer(Modifier.height(8.dp))
+                com.vpegs.ms.ui.components.GlassProgressBar(vm.updateProgress)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         if (vm.updateAvailable) {
-            Text("Обновление", style = MaterialTheme.typography.titleMedium, color = GlassText)
             Spacer(Modifier.height(8.dp))
             GlassCard(Modifier.fillMaxWidth()) {
                 Text(

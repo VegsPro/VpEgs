@@ -109,7 +109,7 @@ fun ServersScreen(vm: MainViewModel) {
         } else {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
+                contentPadding = PaddingValues(bottom = 120.dp)
             ) {
                 items(groups, key = { it.first.id }) { (sub, nodes) ->
                     SubscriptionGroup(

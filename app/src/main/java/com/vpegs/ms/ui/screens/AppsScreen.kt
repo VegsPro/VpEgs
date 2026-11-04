@@ -29,7 +29,7 @@ fun AppsScreen(vm: MainViewModel) {
     val context = LocalContext.current
     LaunchedEffect(Unit) { vm.loadInstalledApps(context) }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(top = 8.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 4.dp)) {
         Text("Обход приложений", style = MaterialTheme.typography.titleLarge, color = GlassText)
         Spacer(Modifier.height(12.dp))
 
@@ -65,7 +65,9 @@ fun AppsScreen(vm: MainViewModel) {
             if (vm.globalProxyMode)
                 "Выключи переключатель у приложения — оно пойдёт мимо VPN (нужен реконнект)"
             else
-                "Включи приложения, которые должны идти через VPN (нужен реконнект)"
+                "Включи приложения, которые должны идти через VPN (нужен реконнект)",
+            style = MaterialTheme.typography.bodyMedium,
+            color = GlassText
         )
         Text(
             "Госуслуги и банки часто видят «VPN включён» по системному интерфейсу, даже если трафик приложения идёт напрямую. Обход отключает только туннель для приложения.",
@@ -77,7 +79,7 @@ fun AppsScreen(vm: MainViewModel) {
                 value = vm.appSearch,
                 onValueChange = { vm.updateAppSearch(it) },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Поиск приложений…") },
+                placeholder = { Text("Поиск приложений…", color = GlassTextMuted) },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
@@ -107,7 +109,7 @@ fun AppsScreen(vm: MainViewModel) {
                 )
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp)
+                    contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
                     items(vm.filteredApps, key = { it.packageName }) { app ->
                         AppRow(app, onToggle = { vm.toggleAppProxy(app.packageName) })

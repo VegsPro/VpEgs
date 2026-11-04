@@ -272,6 +272,7 @@ class MainViewModel : ViewModel() {
                     lastError = null
                     connState = ConnState.CONNECTED
                     startStats()
+                    refreshPublicIp()
                     return@launch
                 }
                 val err = VpEgsVpnService.lastError
@@ -296,6 +297,7 @@ class MainViewModel : ViewModel() {
             delay(500)
             connState = ConnState.DISCONNECTED
             stats = ConnectionStats()
+            refreshPublicIp()
         }
     }
 
@@ -1018,6 +1020,9 @@ class MainViewModel : ViewModel() {
                 showUpdateBanner = false
                 updateDownloaded = false
                 updateApkPath = null
+                workStatus = "Установлена актуальная версия"
+                kotlinx.coroutines.delay(1500)
+                workStatus = ""
                 return@launch
             }
             updateVersionCode = remote.versionCode

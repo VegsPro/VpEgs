@@ -32,7 +32,11 @@ fun HomeScreen(vm: MainViewModel) {
     val server = vm.selectedServer
     val sub = server?.let { s -> vm.subscriptions.find { it.id == s.subscriptionId } }
 
-    LaunchedEffect(vm.connState) { vm.refreshPublicIp() }
+    LaunchedEffect(vm.connState) {
+        // Auto IP on connect / disconnect
+        kotlinx.coroutines.delay(400)
+        vm.refreshPublicIp()
+    }
     // Sync ON/OFF with real system VPN every second
     LaunchedEffect(Unit) {
         while (true) {
@@ -46,7 +50,7 @@ fun HomeScreen(vm: MainViewModel) {
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(top = 8.dp, bottom = 28.dp),
+            .padding(top = 8.dp, bottom = 120.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 

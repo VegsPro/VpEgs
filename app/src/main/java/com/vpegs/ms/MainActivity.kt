@@ -41,6 +41,9 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 
+/** Space reserved so list items can scroll above the floating tab. */
+val BottomBarContentPad = 108.dp
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,15 +51,33 @@ class MainActivity : ComponentActivity() {
         setContent {
             val vm: MainViewModel = viewModel()
             LaunchedEffect(Unit) { vm.load(applicationContext) }
-            LaunchedEffect(vm.themeId) { applyPalette(paletteFor(vm.themeId)) }
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    background = GlassBg,
-                    surface = GlassSurface,
-                    primary = GlassPrimary
-                )
-            ) {
-                VpEgsApp(vm)
+            // Apply theme synchronously on every recomposition so colors update immediately
+            val themeId = vm.themeId
+            val palette = remember(themeId) { paletteFor(themeId) }
+            applyPalette(palette)
+
+            key(themeId) {
+                MaterialTheme(
+                    colorScheme = if (palette.isLight) {
+                        lightColorScheme(
+                            background = palette.bg,
+                            surface = palette.surface,
+                            primary = palette.primary,
+                            onBackground = palette.text,
+                            onSurface = palette.text
+                        )
+                    } else {
+                        darkColorScheme(
+                            background = palette.bg,
+                            surface = palette.surface,
+                            primary = palette.primary,
+                            onBackground = palette.text,
+                            onSurface = palette.text
+                        )
+                    }
+                ) {
+                    VpEgsApp(vm)
+                }
             }
         }
     }
@@ -81,21 +102,19 @@ fun VpEgsApp(vm: MainViewModel) {
 
     CompositionLocalProvider(
         LocalGlassEnabled provides glassOn,
-        // Cards stay translucent only — real blur is for the floating bar (SimpMusic pattern:
-        // blur target must be a sibling of hazeSource, not a child).
         LocalHazeState provides null
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(GlassBg) // solid theme bg — no weird gradient
+                .background(GlassBg)
+                .statusBarsPadding()
         ) {
-            // CONTENT = glass source (what gets blurred under the bar)
+            // Full-screen content under the tab (tab blurs scrolling content)
             Box(
                 Modifier
                     .fillMaxSize()
                     .then(if (glassOn) Modifier.hazeSource(state = hazeState) else Modifier)
-                    .padding(bottom = 88.dp)
             ) {
                 NavHost(
                     navController = nav,
@@ -122,7 +141,6 @@ fun VpEgsApp(vm: MainViewModel) {
                 }
             }
 
-            // FLOATING GLASS BAR = sibling of source (SimpMusic / Haze correct usage)
             GlassBottomBar(
                 items = items,
                 currentRoute = route,
@@ -131,7 +149,7 @@ fun VpEgsApp(vm: MainViewModel) {
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 onSelect = { s ->
                     nav.navigate(s.route) {
                         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -144,10 +162,6 @@ fun VpEgsApp(vm: MainViewModel) {
     }
 }
 
-/**
- * Capsule bottom bar — same idea as SimpMusic mini-player / chip row:
- * hazeSource is the page; this bar applies blur as a sibling.
- */
 @Composable
 private fun GlassBottomBar(
     items: List<Screen>,
@@ -157,26 +171,25 @@ private fun GlassBottomBar(
     modifier: Modifier = Modifier,
     onSelect: (Screen) -> Unit
 ) {
-    val shape = RoundedCornerShape(28.dp)
-    // ultraThin-like style (SimpMusic HazeMaterials.ultraThin analogue)
+    val shape = RoundedCornerShape(32.dp)
     val barStyle = HazeStyle(
-        backgroundColor = GlassSurface.copy(alpha = 0.55f),
+        backgroundColor = GlassSurface.copy(alpha = 0.5f),
         tints = listOf(
-            HazeTint(Color.White.copy(alpha = 0.12f)),
-            HazeTint(GlassPrimary.copy(alpha = 0.06f)),
+            HazeTint(Color.White.copy(alpha = 0.14f)),
+            HazeTint(GlassPrimary.copy(alpha = 0.08f)),
         ),
-        blurRadius = 28.dp,
+        blurRadius = 32.dp,
     )
 
     val barMod = modifier
         .fillMaxWidth()
-        .height(64.dp)
+        .height(72.dp)
         .clip(shape)
         .then(
             if (glassOn) {
                 Modifier
                     .hazeEffect(state = hazeState, style = barStyle)
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), shape)
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), shape)
             } else {
                 Modifier
                     .background(GlassSurface)
@@ -192,7 +205,7 @@ private fun GlassBottomBar(
         items.forEach { s ->
             val selected = currentRoute == s.route
             val bg by animateColorAsState(
-                if (selected) GlassPrimary.copy(alpha = 0.22f) else Color.Transparent,
+                if (selected) GlassPrimary.copy(alpha = 0.25f) else Color.Transparent,
                 tween(220),
                 label = "navBg"
             )
@@ -207,13 +220,13 @@ private fun GlassBottomBar(
                     .weight(1f)
                     .fillMaxHeight()
                     .padding(vertical = 8.dp, horizontal = 2.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(22.dp))
                     .background(bg)
                     .clickable(indication = null, interactionSource = interaction) { onSelect(s) },
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(s.icon, s.title, tint = tint, modifier = Modifier.size(22.dp))
+                    Icon(s.icon, s.title, tint = tint, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.height(2.dp))
                     Text(
                         s.title,
