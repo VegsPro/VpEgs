@@ -207,54 +207,75 @@ fun SettingsScreen(vm: MainViewModel) {
         Spacer(Modifier.height(8.dp))
         GlassCard(Modifier.fillMaxWidth()) {
             val ctx = LocalContext.current
+            val act = ctx as? android.app.Activity
             Text(
-                "Текущая: ${com.vpegs.ms.BuildConfig.VERSION_NAME} (${com.vpegs.ms.BuildConfig.VERSION_CODE})",
+                "Текущая: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                 style = MaterialTheme.typography.bodyMedium,
                 color = GlassText
             )
-            Spacer(Modifier.height(8.dp))
-            androidx.compose.material3.Button(
-                onClick = { vm.checkForAppUpdate(ctx.applicationContext) },
-                enabled = !vm.updateDownloading,
-                colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
-            ) {
-                Text(if (vm.updateDownloading) "Проверка…" else "Проверить обновление")
-            }
-            if (vm.updateDownloading) {
-                Spacer(Modifier.height(8.dp))
-                com.vpegs.ms.ui.components.GlassProgressBar(vm.updateProgress)
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        if (vm.updateAvailable) {
-            Spacer(Modifier.height(8.dp))
-            GlassCard(Modifier.fillMaxWidth()) {
-                Text(
-                    "Версия ${vm.updateVersionName.ifBlank { vm.updateVersionCode.toString() }}",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = GlassText
-                )
-                Text(
-                    if (vm.updateDownloaded) "APK готов к установке"
-                    else if (vm.updateDownloading) "Скачивание… ${(vm.updateProgress * 100).toInt()}%"
-                    else "Доступна на GitHub",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = GlassTextMuted
-                )
-                if (vm.updateDownloading) {
+
+            when {
+                vm.updateDownloading -> {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Скачивание ${vm.updateVersionName.ifBlank { vm.updateVersionCode.toString() }}… ${(vm.updateProgress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTextMuted
+                    )
                     Spacer(Modifier.height(8.dp))
                     com.vpegs.ms.ui.components.GlassProgressBar(vm.updateProgress)
                 }
-                Spacer(Modifier.height(10.dp))
-                val act = LocalContext.current as? android.app.Activity
-                androidx.compose.material3.Button(
-                    onClick = { act?.let { vm.installUpdate(it) } },
-                    enabled = vm.updateDownloaded,
-                    colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
-                ) { Text("Обновить") }
+                vm.updateAvailable && vm.updateDownloaded -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Готово: ${vm.updateVersionName.ifBlank { vm.updateVersionCode.toString() }}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = GlassText
+                    )
+                    Text(
+                        "APK в кеше · можно установить",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTextMuted
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { act?.let { vm.installUpdate(it) } },
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
+                        ) { Text("Установить") }
+                        OutlinedButton(
+                            onClick = { vm.checkForAppUpdate(ctx.applicationContext) },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GlassText)
+                        ) { Text("Проверить снова") }
+                    }
+                }
+                vm.updateAvailable -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Доступна ${vm.updateVersionName.ifBlank { vm.updateVersionCode.toString() }}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = GlassText
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = { vm.checkForAppUpdate(ctx.applicationContext) },
+                        colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
+                    ) { Text("Скачать") }
+                }
+                else -> {
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = { vm.checkForAppUpdate(ctx.applicationContext) },
+                        colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
+                    ) { Text("Проверить обновление") }
+                    if (vm.workStatus.contains("актуальн", ignoreCase = true)) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(vm.workStatus, style = MaterialTheme.typography.labelMedium, color = GlassAccent)
+                    }
+                }
             }
-            Spacer(Modifier.height(16.dp))
         }
+        Spacer(Modifier.height(16.dp))
 
         Text("О VpEgs", style = MaterialTheme.typography.titleMedium, color = GlassText)
         Spacer(Modifier.height(8.dp))
