@@ -25,6 +25,12 @@ import androidx.compose.ui.unit.sp
 import com.vpegs.ms.data.Protocol
 import com.vpegs.ms.data.ServerNode
 import com.vpegs.ms.ui.theme.*
+import com.vpegs.ms.ui.theme.LocalGlassEnabled
+import com.vpegs.ms.ui.theme.LocalHazeState
+import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 
 @Composable
 fun GlassCard(
@@ -32,11 +38,28 @@ fun GlassCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val mod = modifier
-        .clip(RoundedCornerShape(20.dp))
-        .background(GlassSurfaceHigh)
-        .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
-        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+    val glassOn = LocalGlassEnabled.current
+    val hazeState = LocalHazeState.current
+    val shape = RoundedCornerShape(20.dp)
+    var mod = modifier.clip(shape)
+    mod = if (glassOn && hazeState != null) {
+        mod
+            .hazeEffect(
+                state = hazeState,
+                style = HazeStyle(
+                    backgroundColor = GlassSurfaceHigh.copy(alpha = 0.25f),
+                    tints = listOf(HazeTint(Color.White.copy(alpha = 0.08f))),
+                    blurRadius = 18.dp,
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.18f), shape)
+            .background(GlassSurfaceHigh.copy(alpha = 0.35f))
+    } else {
+        mod
+            .background(if (glassOn) GlassSurfaceHigh.copy(alpha = 0.92f) else GlassSurfaceHigh)
+            .border(1.dp, if (glassOn) Color.White.copy(alpha = 0.12f) else GlassBorder, shape)
+    }
+    mod = mod.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     Column(mod.padding(16.dp), content = content)
 }
 
@@ -190,12 +213,7 @@ fun GlassSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    val trackOn = Brush.horizontalGradient(
-        listOf(GlassPrimary.copy(0.55f), GlassAccent.copy(0.45f))
-    )
-    val trackOff = Brush.horizontalGradient(
-        listOf(GlassSurfaceHigh, GlassBorder.copy(0.5f))
-    )
+    val glassOn = LocalGlassEnabled.current
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
@@ -203,11 +221,11 @@ fun GlassSwitch(
         modifier = modifier,
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White,
-            checkedTrackColor = GlassPrimary.copy(0.5f),
-            checkedBorderColor = GlassPrimary.copy(0.8f),
-            uncheckedThumbColor = GlassTextMuted,
-            uncheckedTrackColor = GlassSurfaceHigh,
-            uncheckedBorderColor = GlassBorder
+            checkedTrackColor = if (glassOn) GlassPrimary.copy(0.45f) else GlassPrimary.copy(0.65f),
+            checkedBorderColor = if (glassOn) Color.White.copy(0.35f) else GlassPrimary.copy(0.8f),
+            uncheckedThumbColor = if (glassOn) Color.White.copy(0.9f) else GlassTextMuted,
+            uncheckedTrackColor = if (glassOn) Color.White.copy(0.08f) else GlassSurfaceHigh,
+            uncheckedBorderColor = if (glassOn) Color.White.copy(0.2f) else GlassBorder
         )
     )
 }

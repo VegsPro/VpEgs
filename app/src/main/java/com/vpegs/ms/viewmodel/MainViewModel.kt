@@ -138,6 +138,8 @@ class MainViewModel : ViewModel() {
         private set
     var showServerIp by mutableStateOf(true)
         private set
+    var glassEffect by mutableStateOf(true)
+        private set
 
     val filteredServers: List<ServerNode>
         get() {
@@ -175,6 +177,7 @@ class MainViewModel : ViewModel() {
             bgUpdateHours = Prefs.loadBgUpdateHours(ctx)
             showServerProtocol = Prefs.loadShowServerProtocol(ctx)
             showServerIp = Prefs.loadShowServerIp(ctx)
+            glassEffect = Prefs.loadGlassEffect(ctx)
             com.vpegs.ms.worker.SubUpdateWorker.schedule(ctx, bgUpdateHours, bgUpdateEnabled)
             try {
                 themeId = com.vpegs.ms.ui.theme.AppThemeId.valueOf(Prefs.loadThemeId(ctx))
@@ -635,6 +638,10 @@ class MainViewModel : ViewModel() {
     fun updateShowServerIp(v: Boolean) {
         showServerIp = v
         appContext?.let { Prefs.saveServersUi(it, showServerProtocol, showServerIp) }
+    }
+    fun updateGlassEffect(v: Boolean) {
+        glassEffect = v
+        appContext?.let { Prefs.saveGlassEffect(it, v) }
     }
 
     fun updateThemeId(id: com.vpegs.ms.ui.theme.AppThemeId) {

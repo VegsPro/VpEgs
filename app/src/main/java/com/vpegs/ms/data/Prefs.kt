@@ -202,4 +202,9 @@ object Prefs {
     }
     fun loadShowServerProtocol(ctx: Context) = sp(ctx).getBoolean("show_server_protocol", true)
     fun loadShowServerIp(ctx: Context) = sp(ctx).getBoolean("show_server_ip", true)
+
+    fun saveGlassEffect(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("glass_effect", enabled).apply()
+    }
+    fun loadGlassEffect(ctx: Context): Boolean = sp(ctx).getBoolean("glass_effect", true)
 }

@@ -93,6 +93,24 @@ fun SettingsScreen(vm: MainViewModel) {
             }
         }
 
+        Spacer(Modifier.height(12.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Glass-эффект", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text(
+                        "Размытие фона (Haze). Выключите на слабых устройствах",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTextMuted
+                    )
+                }
+                GlassSwitch(
+                    checked = vm.glassEffect,
+                    onCheckedChange = { vm.updateGlassEffect(it) }
+                )
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         Text("Пинг", style = MaterialTheme.typography.titleMedium, color = GlassText)
         Spacer(Modifier.height(8.dp))

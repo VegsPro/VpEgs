@@ -12,8 +12,8 @@ android {
         applicationId = "com.vpegs.ms"
         minSdk = 29
         targetSdk = 35
-        versionCode = 34
-        versionName = "1.8.1"
+        versionCode = 35
+        versionName = "1.8.2"
         // Only real phone ABIs — cuts APK ~half (drop x86 emulator libs)
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -74,5 +74,8 @@ dependencies {
     implementation(files("libs/hev-socks5-tunnel.aar"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // Glass / glassmorphism backdrop blur
+    implementation("dev.chrisbanes.haze:haze:1.3.1")
+    implementation("dev.chrisbanes.haze:haze-materials:1.3.1")
 }
 

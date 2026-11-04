@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
@@ -13,6 +14,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Subscriptions
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -24,6 +29,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.vpegs.ms.ui.screens.*
 import com.vpegs.ms.ui.theme.GlassBg
+import com.vpegs.ms.ui.theme.LocalGlassEnabled
+import com.vpegs.ms.ui.theme.LocalHazeState
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+
 import com.vpegs.ms.ui.theme.GlassPrimary
 import com.vpegs.ms.ui.theme.GlassPrimarySoft
 import com.vpegs.ms.ui.theme.GlassSurface
@@ -88,9 +98,21 @@ fun VpEgsApp(vm: MainViewModel) {
     val items = listOf(Screen.Home, Screen.Servers, Screen.Subs, Screen.Apps, Screen.Settings)
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
+    val hazeState = remember { HazeState() }
+    val glassOn = vm.glassEffect
 
+    CompositionLocalProvider(
+        LocalGlassEnabled provides glassOn,
+        LocalHazeState provides if (glassOn) hazeState else null
+    ) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(GlassBg)
+            .then(if (glassOn) Modifier.hazeSource(state = hazeState) else Modifier)
+    ) {
     Scaffold(
-        containerColor = GlassBg,
+        containerColor = Color.Transparent,
         bottomBar = {
             NavigationBar(containerColor = GlassSurface, contentColor = GlassPrimarySoft) {
                 items.forEach { s ->
@@ -131,4 +153,6 @@ fun VpEgsApp(vm: MainViewModel) {
             composable(Screen.Settings.route) { SettingsScreen(vm) }
         }
     }
+    } // Box
+    } // CompositionLocalProvider
 }
