@@ -39,6 +39,9 @@ jobs:
         with:
           tag_name: v${{ github.run_number }}
           name: VpEgs v${{ github.run_number }}
+          body: |
+            versionCode=${{ github.run_number }}
+            versionName=1.8.1
           files: app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

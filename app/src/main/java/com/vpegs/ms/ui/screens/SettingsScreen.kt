@@ -185,6 +185,37 @@ fun SettingsScreen(vm: MainViewModel) {
         }
 
         Spacer(Modifier.height(16.dp))
+        if (vm.updateAvailable) {
+            Text("Обновление", style = MaterialTheme.typography.titleMedium, color = GlassText)
+            Spacer(Modifier.height(8.dp))
+            GlassCard(Modifier.fillMaxWidth()) {
+                Text(
+                    "Версия ${vm.updateVersionName.ifBlank { vm.updateVersionCode.toString() }}",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = GlassText
+                )
+                Text(
+                    if (vm.updateDownloaded) "APK готов к установке"
+                    else if (vm.updateDownloading) "Скачивание… ${(vm.updateProgress * 100).toInt()}%"
+                    else "Доступна на GitHub",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = GlassTextMuted
+                )
+                if (vm.updateDownloading) {
+                    Spacer(Modifier.height(8.dp))
+                    com.vpegs.ms.ui.components.GlassProgressBar(vm.updateProgress)
+                }
+                Spacer(Modifier.height(10.dp))
+                val act = LocalContext.current as? android.app.Activity
+                androidx.compose.material3.Button(
+                    onClick = { act?.let { vm.installUpdate(it) } },
+                    enabled = vm.updateDownloaded,
+                    colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
+                ) { Text("Обновить") }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
         Text("О VpEgs", style = MaterialTheme.typography.titleMedium, color = GlassText)
         Spacer(Modifier.height(8.dp))
         GlassCard(Modifier.fillMaxWidth()) {

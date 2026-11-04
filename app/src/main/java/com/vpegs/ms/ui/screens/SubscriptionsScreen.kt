@@ -40,7 +40,7 @@ fun SubscriptionsScreen(vm: MainViewModel) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(top = 8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Подписки", style = MaterialTheme.typography.titleLarge, color = GlassText, modifier = Modifier.weight(1f))
-            IconButton(onClick = { vm.refreshAll() }) { Icon(Icons.Default.Refresh, null, tint = GlassPrimary) }
+            IconButton(onClick = { vm.subscriptions.forEach { vm.refreshSubscription(it.id) } }) { Icon(Icons.Default.Refresh, null, tint = GlassPrimary) }
             IconButton(onClick = { showAdd = true }) { Icon(Icons.Default.Add, null, tint = GlassAccent) }
         }
         if (vm.workProgress > 0f || vm.workStatus.isNotBlank()) {

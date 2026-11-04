@@ -5,18 +5,28 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.net.TrafficStats
 import android.net.VpnService
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.vpegs.ms.BuildConfig
+import com.vpegs.ms.core.AppUpdater
 import com.vpegs.ms.data.*
 import com.vpegs.ms.vpn.VpEgsVpnService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.UUID
 
 enum class ServerSort(val title: String) {
@@ -63,6 +73,24 @@ class MainViewModel : ViewModel() {
     var workProgress by mutableStateOf(0f)
         private set
     var workStatus by mutableStateOf("")
+        private set
+
+    // In-app update (GitHub Releases)
+    var updateAvailable by mutableStateOf(false)
+        private set
+    var updateDownloaded by mutableStateOf(false)
+        private set
+    var updateDownloading by mutableStateOf(false)
+        private set
+    var updateProgress by mutableStateOf(0f)
+        private set
+    var updateVersionName by mutableStateOf("")
+        private set
+    var updateVersionCode by mutableStateOf(0)
+        private set
+    var showUpdateBanner by mutableStateOf(false)
+        private set
+    var updateApkPath by mutableStateOf<String?>(null)
         private set
     var isPinging by mutableStateOf(false)
         private set
@@ -162,6 +190,8 @@ class MainViewModel : ViewModel() {
                 connState = ConnState.CONNECTED
                 startStats()
             }
+            // Background: GitHub update check + download
+            checkForAppUpdate(ctx.applicationContext)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -268,22 +298,26 @@ class MainViewModel : ViewModel() {
 
     private fun startStats() {
         viewModelScope.launch {
-            val baseRx = TrafficStats.getTotalRxBytes().let { if (it < 0) 0 else it }
-            val baseTx = TrafficStats.getTotalTxBytes().let { if (it < 0) 0 else it }
+            val baseRx0 = TrafficStats.getTotalRxBytes()
+            val baseTx0 = TrafficStats.getTotalTxBytes()
+            val baseRx: Long = if (baseRx0 < 0L) 0L else baseRx0
+            val baseTx: Long = if (baseTx0 < 0L) 0L else baseTx0
             var prevRx = baseRx
             var prevTx = baseTx
             var sec = 0L
             while (connState == ConnState.CONNECTED) {
                 delay(1000)
                 sec++
-                val rx = TrafficStats.getTotalRxBytes().let { if (it < 0) prevRx else it }
-                val tx = TrafficStats.getTotalTxBytes().let { if (it < 0) prevTx else it }
-                val dRx = (rx - prevRx).coerceAtLeast(0)
-                val dTx = (tx - prevTx).coerceAtLeast(0)
+                val rx0 = TrafficStats.getTotalRxBytes()
+                val tx0 = TrafficStats.getTotalTxBytes()
+                val rx: Long = if (rx0 < 0L) prevRx else rx0
+                val tx: Long = if (tx0 < 0L) prevTx else tx0
+                val dRx = (rx - prevRx).coerceAtLeast(0L)
+                val dTx = (tx - prevTx).coerceAtLeast(0L)
                 prevRx = rx
                 prevTx = tx
-                val totalDown = (rx - baseRx).coerceAtLeast(0)
-                val totalUp = (tx - baseTx).coerceAtLeast(0)
+                val totalDown = (rx - baseRx).coerceAtLeast(0L)
+                val totalUp = (tx - baseTx).coerceAtLeast(0L)
                 stats = ConnectionStats(totalUp, totalDown, sec, fmtSpeed(dTx), fmtSpeed(dRx))
             }
         }
@@ -764,21 +798,75 @@ class MainViewModel : ViewModel() {
 
     fun updateSubscription(id: String, name: String, url: String) {
         val old = subscriptions.find { it.id == id } ?: return
-        val newName = name.ifBlank { old.name }
         val newUrl = url.ifBlank { old.url }
-        subscriptions = subscriptions.map {
-            if (it.id == id) it.copy(name = newName, url = newUrl) else it
-        }
-        persist()
-        if (newUrl != old.url) {
-            // re-fetch with new url
-            viewModelScope.launch {
-                try {
-                    addSubscription(newName, newUrl)
-                    // remove old servers of this id after re-add would duplicate — simplify: just persist name/url
-                } catch (_: Exception) {}
+        val newName = name.ifBlank { old.name }
+        // Full refresh: re-fetch body, replace all servers of this sub, traffic, expire, announce
+        viewModelScope.launch {
+            workStatus = "Обновление подписки…"
+            workProgress = 0.15f
+            try {
+                val fr = withContext(Dispatchers.IO) { fetchSubscription(newUrl) }
+                workStatus = "Обновление серверов…"
+                workProgress = 0.5f
+                val list = com.vpegs.ms.core.LinkParser
+                    .parseSubscriptionBody(fr.body, id, newName)
+                    .toMutableList()
+                if (list.isEmpty()) {
+                    com.vpegs.ms.core.LinkParser.parse(newUrl.trim(), id)?.let { list.add(it) }
+                }
+                // Drop old configs/servers for this subscription
+                val oldIds = servers.filter { it.subscriptionId == id }.map { it.id }.toSet()
+                oldIds.forEach { configByServerId.remove(it) }
+                list.forEach { configByServerId[it.node.id] = it.configJson }
+                val nodes = list.map { it.node.copy(subscriptionId = id) }
+                val selectedWasThis = selectedServer?.subscriptionId == id
+                val prevSelectedId = selectedServer?.id
+                servers = servers.filter { it.subscriptionId != id } + nodes
+                subscriptions = subscriptions.map {
+                    if (it.id != id) it
+                    else it.copy(
+                        name = fr.title.ifBlank { newName },
+                        url = newUrl,
+                        serversCount = nodes.size,
+                        lastUpdated = System.currentTimeMillis(),
+                        uploadBytes = fr.upload,
+                        downloadBytes = fr.download,
+                        totalBytes = fr.total,
+                        expireAt = fr.expire,
+                        announce = fr.announce,
+                        webPageUrl = fr.webPage,
+                        updateIntervalHours = fr.updateInterval,
+                        autoUpdate = old.autoUpdate
+                    )
+                }
+                // Keep selection if still present, else first of new list
+                val still = servers.find { it.id == prevSelectedId }
+                when {
+                    still != null -> selectServer(still)
+                    selectedWasThis && nodes.isNotEmpty() -> selectServer(nodes.first())
+                    else -> persist()
+                }
+                workStatus = "Подписка обновлена · ${nodes.size} серверов"
+                workProgress = 1f
+                delay(1000)
+                workStatus = ""
+                workProgress = 0f
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // Still update name/url locally
+                subscriptions = subscriptions.map {
+                    if (it.id == id) it.copy(name = newName, url = newUrl) else it
+                }
+                persist()
+                workStatus = "Ошибка обновления: ${e.message?.take(40)}"
+                workProgress = 0f
             }
         }
+    }
+
+    fun refreshSubscription(id: String) {
+        val sub = subscriptions.find { it.id == id } ?: return
+        updateSubscription(id, sub.name, sub.url)
     }
 
     fun removeSubscription(id: String) {
@@ -911,4 +999,82 @@ class MainViewModel : ViewModel() {
     }
 
     companion object { const val REQ_VPN = 1001 }
+
+    fun checkForAppUpdate(ctx: Context) {
+        viewModelScope.launch {
+            // Cleanup APKs for versions we already run
+            AppUpdater.deleteCached(ctx, BuildConfig.VERSION_CODE)
+            val remote = withContext(Dispatchers.IO) { AppUpdater.fetchLatest() } ?: return@launch
+            if (remote.versionCode <= BuildConfig.VERSION_CODE) {
+                updateAvailable = false
+                showUpdateBanner = false
+                return@launch
+            }
+            if (AppUpdater.isDismissed(ctx, remote.versionCode)) {
+                updateAvailable = true
+                updateVersionCode = remote.versionCode
+                updateVersionName = remote.versionName
+                showUpdateBanner = false
+                // keep button in settings if apk already on disk
+                val existing = AppUpdater.apkFile(ctx, remote.versionCode)
+                if (existing.exists() && existing.length() > 100_000) {
+                    updateDownloaded = true
+                    updateApkPath = existing.absolutePath
+                }
+                return@launch
+            }
+            if (!AppUpdater.canOfferInstall(ctx, remote.versionCode)) {
+                showUpdateBanner = false
+                updateAvailable = false
+                return@launch
+            }
+            updateAvailable = true
+            updateVersionCode = remote.versionCode
+            updateVersionName = remote.versionName
+            showUpdateBanner = true
+            // Background download
+            updateDownloading = true
+            val file = AppUpdater.download(ctx, remote) { p ->
+                updateProgress = p
+            }
+            updateDownloading = false
+            if (file != null) {
+                updateDownloaded = true
+                updateApkPath = file.absolutePath
+                updateProgress = 1f
+            }
+        }
+    }
+
+    fun dismissUpdateBanner(ctx: Context) {
+        showUpdateBanner = false
+        if (updateVersionCode > 0) AppUpdater.dismiss(ctx, updateVersionCode)
+    }
+
+    fun installUpdate(activity: android.app.Activity) {
+        val path = updateApkPath ?: return
+        val f = java.io.File(path)
+        if (!f.exists()) return
+        val ok = AppUpdater.install(activity, f)
+        if (!ok) {
+            lastError = "Не удалось открыть установщик"
+        }
+    }
+
+    fun declineUpdateInstall(ctx: Context) {
+        if (updateVersionCode > 0) AppUpdater.recordDecline(ctx, updateVersionCode)
+        if (AppUpdater.isDismissed(ctx, updateVersionCode)) {
+            showUpdateBanner = false
+            updateAvailable = false
+        }
+    }
+
+    fun clearUpdateCacheAfterInstall(ctx: Context) {
+        AppUpdater.deleteCached(ctx, BuildConfig.VERSION_CODE)
+        updateAvailable = false
+        updateDownloaded = false
+        updateApkPath = null
+        showUpdateBanner = false
+    }
+
 }

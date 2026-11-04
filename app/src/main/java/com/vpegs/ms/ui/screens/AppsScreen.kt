@@ -40,7 +40,6 @@ fun AppsScreen(vm: MainViewModel) {
                     Text("Все приложения через VPN", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
                 }
                 GlassSwitch(checked = vm.globalProxyMode, onCheckedChange = { vm.updateGlobalProxyMode(it) })
-                )
             }
             if (!vm.globalProxyMode) {
                 Spacer(Modifier.height(12.dp))
@@ -57,7 +56,6 @@ fun AppsScreen(vm: MainViewModel) {
                         )
                     }
                     GlassSwitch(checked = vm.invertAppProxy, onCheckedChange = { vm.updateInvertAppProxy(it) })
-                    )
                 }
             }
         }

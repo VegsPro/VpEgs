@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -48,6 +49,55 @@ fun HomeScreen(vm: MainViewModel) {
             .padding(top = 8.dp, bottom = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+
+        if (vm.showUpdateBanner) {
+            GlassCard(Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Доступна новая версия",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GlassText
+                        )
+                        Text(
+                            if (vm.updateDownloading)
+                                "Скачивание… ${(vm.updateProgress * 100).toInt()}%"
+                            else if (vm.updateDownloaded)
+                                "Установка займёт ~5 секунд · v${vm.updateVersionName.ifBlank { vm.updateVersionCode.toString() }}"
+                            else
+                                "Появилась версия на GitHub",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GlassTextMuted
+                        )
+                        if (vm.updateDownloading) {
+                            Spacer(Modifier.height(8.dp))
+                            GlassProgressBar(vm.updateProgress)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ActionChip(
+                                "Обновить",
+                                loading = vm.updateDownloading || !vm.updateDownloaded,
+                                accent = true
+                            ) {
+                                if (vm.updateDownloaded) {
+                                    activity?.let { vm.installUpdate(it) }
+                                }
+                            }
+                        }
+                    }
+                    IconButton(onClick = { vm.dismissUpdateBanner(ctx) }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "Закрыть",
+                            tint = GlassTextMuted
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
         if (!vm.lastError.isNullOrBlank()) {
             Text(vm.lastError!!, color = GlassDanger, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(8.dp))
