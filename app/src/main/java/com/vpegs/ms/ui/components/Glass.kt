@@ -39,34 +39,15 @@ fun GlassCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val glassOn = LocalGlassEnabled.current
-    val hazeState = LocalHazeState.current
     val shape = RoundedCornerShape(20.dp)
-    var mod = modifier.clip(shape)
-    mod = if (glassOn && hazeState != null) {
-        mod
-            .hazeEffect(
-                state = hazeState,
-                style = HazeStyle(
-                    backgroundColor = Color.Black.copy(alpha = 0.2f),
-                    tints = listOf(
-                        HazeTint(Color.White.copy(alpha = 0.1f)),
-                        HazeTint(GlassPrimary.copy(alpha = 0.08f))
-                    ),
-                    blurRadius = 22.dp,
-                )
-            )
-            .background(Color.White.copy(alpha = 0.07f))
-            .border(1.dp, Color.White.copy(alpha = 0.18f), shape)
-    } else if (glassOn) {
-        mod
-            .background(GlassSurfaceHigh.copy(alpha = 0.55f))
-            .border(1.dp, Color.White.copy(alpha = 0.14f), shape)
-    } else {
-        mod
-            .background(GlassSurfaceHigh)
-            .border(1.dp, GlassBorder, shape)
-    }
-    mod = mod.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+    // SimpMusic: content sits on solid page; cards are translucent panels (blur is for floating chrome only)
+    val bg = if (glassOn) Color.White.copy(alpha = 0.08f) else GlassSurfaceHigh
+    val border = if (glassOn) Color.White.copy(alpha = 0.16f) else GlassBorder
+    var mod = modifier
+        .clip(shape)
+        .background(bg)
+        .border(1.dp, border, shape)
+    if (onClick != null) mod = mod.clickable(onClick = onClick)
     Column(mod.padding(16.dp), content = content)
 }
 

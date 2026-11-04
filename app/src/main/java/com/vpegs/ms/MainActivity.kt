@@ -7,11 +7,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -24,7 +23,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -83,54 +81,48 @@ fun VpEgsApp(vm: MainViewModel) {
 
     CompositionLocalProvider(
         LocalGlassEnabled provides glassOn,
-        LocalHazeState provides if (glassOn) hazeState else null
+        // Cards stay translucent only — real blur is for the floating bar (SimpMusic pattern:
+        // blur target must be a sibling of hazeSource, not a child).
+        LocalHazeState provides null
     ) {
-        Box(Modifier.fillMaxSize()) {
-            // Ambient gradient background (shows through glass)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(GlassBg) // solid theme bg — no weird gradient
+        ) {
+            // CONTENT = glass source (what gets blurred under the bar)
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                GlassBg,
-                                GlassPrimary.copy(alpha = 0.12f),
-                                GlassBg,
-                                GlassAccent.copy(alpha = 0.08f),
-                                GlassBg
-                            )
-                        )
-                    )
                     .then(if (glassOn) Modifier.hazeSource(state = hazeState) else Modifier)
-            )
-
-            NavHost(
-                navController = nav,
-                startDestination = Screen.Home.route,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 88.dp),
-                enterTransition = {
-                    fadeIn(tween(280)) + slideInHorizontally(tween(320)) { it / 8 }
-                },
-                exitTransition = {
-                    fadeOut(tween(200)) + slideOutHorizontally(tween(280)) { -it / 12 }
-                },
-                popEnterTransition = {
-                    fadeIn(tween(280)) + slideInHorizontally(tween(320)) { -it / 8 }
-                },
-                popExitTransition = {
-                    fadeOut(tween(200)) + slideOutHorizontally(tween(280)) { it / 12 }
-                }
+                    .padding(bottom = 88.dp)
             ) {
-                composable(Screen.Home.route) { HomeScreen(vm) }
-                composable(Screen.Servers.route) { ServersScreen(vm) }
-                composable(Screen.Subs.route) { SubscriptionsScreen(vm) }
-                composable(Screen.Apps.route) { AppsScreen(vm) }
-                composable(Screen.Settings.route) { SettingsScreen(vm) }
+                NavHost(
+                    navController = nav,
+                    startDestination = Screen.Home.route,
+                    modifier = Modifier.fillMaxSize(),
+                    enterTransition = {
+                        fadeIn(tween(260)) + slideInHorizontally(tween(300)) { it / 10 }
+                    },
+                    exitTransition = {
+                        fadeOut(tween(180)) + slideOutHorizontally(tween(260)) { -it / 14 }
+                    },
+                    popEnterTransition = {
+                        fadeIn(tween(260)) + slideInHorizontally(tween(300)) { -it / 10 }
+                    },
+                    popExitTransition = {
+                        fadeOut(tween(180)) + slideOutHorizontally(tween(260)) { it / 14 }
+                    }
+                ) {
+                    composable(Screen.Home.route) { HomeScreen(vm) }
+                    composable(Screen.Servers.route) { ServersScreen(vm) }
+                    composable(Screen.Subs.route) { SubscriptionsScreen(vm) }
+                    composable(Screen.Apps.route) { AppsScreen(vm) }
+                    composable(Screen.Settings.route) { SettingsScreen(vm) }
+                }
             }
 
-            // Floating glass bottom bar (like music app screenshot)
+            // FLOATING GLASS BAR = sibling of source (SimpMusic / Haze correct usage)
             GlassBottomBar(
                 items = items,
                 currentRoute = route,
@@ -139,7 +131,7 @@ fun VpEgsApp(vm: MainViewModel) {
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 onSelect = { s ->
                     nav.navigate(s.route) {
                         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -152,6 +144,10 @@ fun VpEgsApp(vm: MainViewModel) {
     }
 }
 
+/**
+ * Capsule bottom bar — same idea as SimpMusic mini-player / chip row:
+ * hazeSource is the page; this bar applies blur as a sibling.
+ */
 @Composable
 private fun GlassBottomBar(
     items: List<Screen>,
@@ -162,6 +158,16 @@ private fun GlassBottomBar(
     onSelect: (Screen) -> Unit
 ) {
     val shape = RoundedCornerShape(28.dp)
+    // ultraThin-like style (SimpMusic HazeMaterials.ultraThin analogue)
+    val barStyle = HazeStyle(
+        backgroundColor = GlassSurface.copy(alpha = 0.55f),
+        tints = listOf(
+            HazeTint(Color.White.copy(alpha = 0.12f)),
+            HazeTint(GlassPrimary.copy(alpha = 0.06f)),
+        ),
+        blurRadius = 28.dp,
+    )
+
     val barMod = modifier
         .fillMaxWidth()
         .height(64.dp)
@@ -169,19 +175,8 @@ private fun GlassBottomBar(
         .then(
             if (glassOn) {
                 Modifier
-                    .hazeEffect(
-                        state = hazeState,
-                        style = HazeStyle(
-                            backgroundColor = Color.Black.copy(alpha = 0.25f),
-                            tints = listOf(
-                                HazeTint(Color.White.copy(alpha = 0.08f)),
-                                HazeTint(GlassPrimary.copy(alpha = 0.12f))
-                            ),
-                            blurRadius = 24.dp,
-                        )
-                    )
-                    .background(Color.White.copy(alpha = 0.06f))
-                    .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
+                    .hazeEffect(state = hazeState, style = barStyle)
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), shape)
             } else {
                 Modifier
                     .background(GlassSurface)
@@ -190,7 +185,7 @@ private fun GlassBottomBar(
         )
 
     Row(
-        barMod.padding(horizontal = 6.dp),
+        barMod.padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
