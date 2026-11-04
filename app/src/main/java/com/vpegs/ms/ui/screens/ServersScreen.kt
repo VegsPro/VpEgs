@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.vpegs.ms.data.ServerNode
 import com.vpegs.ms.data.Subscription
 import com.vpegs.ms.ui.components.LatencyText
+import com.vpegs.ms.ui.components.GlassProgressBar
 import com.vpegs.ms.ui.components.ProtocolBadge
 import com.vpegs.ms.ui.theme.*
 import com.vpegs.ms.viewmodel.MainViewModel
@@ -90,6 +91,9 @@ fun ServersScreen(vm: MainViewModel) {
         }
         Spacer(Modifier.height(12.dp))
 
+        if (vm.workProgress > 0f || vm.workStatus.isNotBlank()) {
+            GlassProgressBar(vm.workProgress, Modifier.padding(bottom = 10.dp), label = vm.workStatus.ifBlank { null })
+        }
         if (vm.subscriptions.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

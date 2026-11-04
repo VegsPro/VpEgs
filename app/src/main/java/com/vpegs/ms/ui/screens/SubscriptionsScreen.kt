@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vpegs.ms.data.Subscription
 import com.vpegs.ms.ui.components.GlassCard
+import com.vpegs.ms.ui.components.GlassProgressBar
 import com.vpegs.ms.ui.theme.*
 import com.vpegs.ms.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
@@ -41,6 +42,9 @@ fun SubscriptionsScreen(vm: MainViewModel) {
             Text("Подписки", style = MaterialTheme.typography.titleLarge, color = GlassText, modifier = Modifier.weight(1f))
             IconButton(onClick = { vm.refreshAll() }) { Icon(Icons.Default.Refresh, null, tint = GlassPrimary) }
             IconButton(onClick = { showAdd = true }) { Icon(Icons.Default.Add, null, tint = GlassAccent) }
+        }
+        if (vm.workProgress > 0f || vm.workStatus.isNotBlank()) {
+            GlassProgressBar(vm.workProgress, Modifier.padding(bottom = 8.dp), label = vm.workStatus.ifBlank { null })
         }
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {

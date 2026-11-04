@@ -93,31 +93,56 @@ fun ServerRow(server: ServerNode, onClick: () -> Unit, onFav: () -> Unit) {
 
 @Composable
 fun GlassPowerButton(connected: Boolean, connecting: Boolean, onClick: () -> Unit) {
+    // Light pulse only while connected — no infinite work when OFF
+    val active = connected || connecting
     val inf = rememberInfiniteTransition(label = "p")
-    val scale by inf.animateFloat(1f, if (connected || connecting) 1.05f else 1f,
-        infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse), label = "s")
-    val glow by inf.animateFloat(0.2f, if (connected) 0.55f else 0.12f,
-        infiniteRepeatable(tween(1400), RepeatMode.Reverse), label = "g")
+    val animScale by inf.animateFloat(
+        1f, if (active) 1.04f else 1f,
+        infiniteRepeatable(tween(if (active) 1200 else 10_000, easing = EaseInOut), RepeatMode.Reverse),
+        label = "s"
+    )
+    val animGlow by inf.animateFloat(
+        if (active) 0.25f else 0.08f,
+        if (connected) 0.5f else 0.12f,
+        infiniteRepeatable(tween(if (active) 1400 else 10_000), RepeatMode.Reverse),
+        label = "g"
+    )
+    val scale = if (active) animScale else 1f
+    val glow = if (active) animGlow else 0.08f
     val ring = when {
         connected -> GlassAccent
         connecting -> GlassPrimarySoft
         else -> GlassTextMuted
     }
     Box(Modifier.size(170.dp), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(170.dp).scale(scale).background(
-            Brush.radialGradient(listOf(ring.copy(glow), Color.Transparent)), CircleShape))
+        if (active) {
+            Box(
+                Modifier
+                    .size(170.dp)
+                    .scale(scale)
+                    .background(Brush.radialGradient(listOf(ring.copy(glow), Color.Transparent)), CircleShape)
+            )
+        }
         Surface(
             onClick = onClick,
             Modifier.size(128.dp),
             shape = CircleShape,
             color = if (connected) GlassAccent.copy(0.12f) else GlassSurfaceHigh,
-            border = androidx.compose.foundation.BorderStroke(2.5.dp, Brush.linearGradient(listOf(ring, ring.copy(0.3f)))),
-            shadowElevation = 10.dp
+            border = androidx.compose.foundation.BorderStroke(
+                2.dp,
+                Brush.linearGradient(listOf(ring, ring.copy(0.35f)))
+            ),
+            shadowElevation = if (connected) 8.dp else 2.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
                 if (connecting) CircularProgressIndicator(Modifier.size(44.dp), color = GlassPrimary, strokeWidth = 3.dp)
-                else Text(if (connected) "ON" else "OFF", style = MaterialTheme.typography.displayLarge,
-                    color = if (connected) GlassAccent else GlassTextMuted, fontWeight = FontWeight.Bold, fontSize = 30.sp)
+                else Text(
+                    if (connected) "ON" else "OFF",
+                    style = MaterialTheme.typography.displayLarge,
+                    color = if (connected) GlassAccent else GlassTextMuted,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 30.sp
+                )
             }
         }
     }
@@ -154,5 +179,66 @@ fun StatPill(title: String, value: String, modifier: Modifier = Modifier) {
         Text(title, style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
         Spacer(Modifier.height(4.dp))
         Text(value, style = MaterialTheme.typography.titleMedium, color = GlassText, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+
+@Composable
+fun GlassSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    val trackOn = Brush.horizontalGradient(
+        listOf(GlassPrimary.copy(0.55f), GlassAccent.copy(0.45f))
+    )
+    val trackOff = Brush.horizontalGradient(
+        listOf(GlassSurfaceHigh, GlassBorder.copy(0.5f))
+    )
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        enabled = enabled,
+        modifier = modifier,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = Color.White,
+            checkedTrackColor = GlassPrimary.copy(0.5f),
+            checkedBorderColor = GlassPrimary.copy(0.8f),
+            uncheckedThumbColor = GlassTextMuted,
+            uncheckedTrackColor = GlassSurfaceHigh,
+            uncheckedBorderColor = GlassBorder
+        )
+    )
+}
+
+@Composable
+fun GlassProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+    label: String? = null
+) {
+    Column(modifier.fillMaxWidth()) {
+        if (!label.isNullOrBlank()) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+            Spacer(Modifier.height(6.dp))
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(GlassBorder.copy(alpha = 0.5f))
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(
+                        Brush.horizontalGradient(listOf(GlassPrimary, GlassAccent))
+                    )
+            )
+        }
     }
 }

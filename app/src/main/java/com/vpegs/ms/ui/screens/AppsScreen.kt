@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vpegs.ms.data.AppProxyItem
 import com.vpegs.ms.ui.components.GlassCard
+import com.vpegs.ms.ui.components.GlassSwitch
 import com.vpegs.ms.ui.theme.*
 import com.vpegs.ms.viewmodel.MainViewModel
 
@@ -38,13 +39,7 @@ fun AppsScreen(vm: MainViewModel) {
                     Text("Глобальный режим", style = MaterialTheme.typography.titleMedium, color = GlassText)
                     Text("Все приложения через VPN", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
                 }
-                Switch(
-                    checked = vm.globalProxyMode,
-                    onCheckedChange = { vm.updateGlobalProxyMode(it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = GlassAccent,
-                        checkedTrackColor = GlassAccent.copy(0.35f)
-                    )
+                GlassSwitch(checked = vm.globalProxyMode, onCheckedChange = { vm.updateGlobalProxyMode(it) })
                 )
             }
             if (!vm.globalProxyMode) {
@@ -61,13 +56,7 @@ fun AppsScreen(vm: MainViewModel) {
                             color = GlassTextMuted
                         )
                     }
-                    Switch(
-                        checked = vm.invertAppProxy,
-                        onCheckedChange = { vm.updateInvertAppProxy(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = GlassPrimary,
-                            checkedTrackColor = GlassPrimary.copy(0.35f)
-                        )
+                    GlassSwitch(checked = vm.invertAppProxy, onCheckedChange = { vm.updateInvertAppProxy(it) })
                     )
                 }
             }
@@ -158,14 +147,7 @@ private fun AppRow(app: AppProxyItem, onToggle: () -> Unit) {
                 color = if (app.proxyEnabled) GlassAccent else GlassTextMuted
             )
             Spacer(Modifier.width(6.dp))
-            Switch(
-                checked = app.proxyEnabled,
-                onCheckedChange = { onToggle() },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = GlassAccent,
-                    checkedTrackColor = GlassAccent.copy(0.35f)
-                )
-            )
+            GlassSwitch(checked = app.proxyEnabled, onCheckedChange = { onToggle() })
         }
     }
 }

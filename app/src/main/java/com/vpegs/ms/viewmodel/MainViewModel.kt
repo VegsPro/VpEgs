@@ -56,6 +56,14 @@ class MainViewModel : ViewModel() {
         private set
     var isScanningBest by mutableStateOf(false)
         private set
+    var bestScanStatus by mutableStateOf("")
+        private set
+    var bestScanProgress by mutableStateOf(0f)
+        private set
+    var workProgress by mutableStateOf(0f)
+        private set
+    var workStatus by mutableStateOf("")
+        private set
     var isPinging by mutableStateOf(false)
         private set
     var lastPingMs by mutableStateOf<Int?>(null)
@@ -260,16 +268,43 @@ class MainViewModel : ViewModel() {
 
     private fun startStats() {
         viewModelScope.launch {
-            var up = 0L; var down = 0L; var sec = 0L
+            val baseRx = TrafficStats.getTotalRxBytes().let { if (it < 0) 0 else it }
+            val baseTx = TrafficStats.getTotalTxBytes().let { if (it < 0) 0 else it }
+            var prevRx = baseRx
+            var prevTx = baseTx
+            var sec = 0L
             while (connState == ConnState.CONNECTED) {
-                delay(1000); sec++
-                val u = (60_000..380_000).random().toLong()
-                val d = (180_000..2_200_000).random().toLong()
-                up += u; down += d
-                stats = ConnectionStats(up, down, sec, fmtSpeed(u), fmtSpeed(d))
+                delay(1000)
+                sec++
+                val rx = TrafficStats.getTotalRxBytes().let { if (it < 0) prevRx else it }
+                val tx = TrafficStats.getTotalTxBytes().let { if (it < 0) prevTx else it }
+                val dRx = (rx - prevRx).coerceAtLeast(0)
+                val dTx = (tx - prevTx).coerceAtLeast(0)
+                prevRx = rx
+                prevTx = tx
+                val totalDown = (rx - baseRx).coerceAtLeast(0)
+                val totalUp = (tx - baseTx).coerceAtLeast(0)
+                stats = ConnectionStats(totalUp, totalDown, sec, fmtSpeed(dTx), fmtSpeed(dRx))
             }
         }
     }
+
+    /** TCP connect latency; null = unreachable */
+    private suspend fun tcpPing(host: String, port: Int, timeoutMs: Int = 1800): Int? =
+        withContext(Dispatchers.IO) {
+            if (host.isBlank() || port <= 0) return@withContext null
+            try {
+                val t0 = System.nanoTime()
+                Socket().use { s ->
+                    s.tcpNoDelay = true
+                    s.connect(InetSocketAddress(host, port), timeoutMs)
+                }
+                ((System.nanoTime() - t0) / 1_000_000L).toInt().coerceAtLeast(1)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
 
     // ——— Server actions ———
     fun selectServer(s: ServerNode) {
@@ -343,124 +378,201 @@ class MainViewModel : ViewModel() {
 
     fun pingCurrent() {
         if (isPinging) return
+        val s = selectedServer ?: return
         isPinging = true
+        workStatus = "Пинг ${s.name}…"
+        workProgress = 0.15f
         viewModelScope.launch {
             val samples = mutableListOf<Int>()
-            val totalMs = pingSeconds * 1000
-            val step = (totalMs / 5).coerceAtLeast(200)
-            var elapsed = 0
-            while (elapsed < totalMs) {
-                delay(step.toLong())
-                elapsed += step
-                samples.add((15..120).random())
+            val rounds = pingSeconds.coerceIn(1, 8)
+            for (i in 1..rounds) {
+                workStatus = "Пинг ${s.name} · замер $i/$rounds"
+                workProgress = i.toFloat() / rounds
+                val ms = tcpPing(s.address, s.port)
+                if (ms != null) samples.add(ms)
+                delay(80)
             }
             val avg = if (samples.isNotEmpty()) samples.average().toInt() else null
             lastPingMs = avg
-            selectedServer?.let { s ->
-                if (avg != null) {
-                    servers = servers.map { if (it.id == s.id) it.copy(latencyMs = avg) else it }
-                    selectedServer = selectedServer?.copy(latencyMs = avg)
-                }
+            if (avg != null) {
+                servers = servers.map { if (it.id == s.id) it.copy(latencyMs = avg) else it }
+                selectedServer = selectedServer?.copy(latencyMs = avg)
             }
+            workStatus = if (avg != null) "Пинг: $avg ms" else "Сервер недоступен"
+            workProgress = if (avg != null) 1f else 0f
             isPinging = false
+            delay(1200)
+            if (!isScanningBest) { workStatus = ""; workProgress = 0f }
         }
     }
 
     fun refreshCurrentServer() {
-        viewModelScope.launch {
-            val totalMs = pingSeconds * 1000
-            val step = (totalMs / 5).coerceAtLeast(200)
-            var elapsed = 0
-            val samples = mutableListOf<Int>()
-            while (elapsed < totalMs) {
-                delay(step.toLong())
-                elapsed += step
-                samples.add((15..150).random())
-            }
-            val avg = samples.average().toInt()
-            servers = servers.map {
-                if (it.id == selectedServer?.id) it.copy(latencyMs = avg)
-                else it.copy(latencyMs = (15..200).random())
-            }
-            selectedServer = servers.find { it.id == selectedServer?.id }
-            lastPingMs = avg
-        }
+        pingCurrent()
     }
 
-    /** Scan all servers, pick lowest latency (first to answer simulation) */
+    /**
+     * Parallel TCP probe of all servers.
+     * Stages shown in [bestScanStatus]. Only reachable servers compete;
+     * winner = lowest RTT. Parallelism limited to 8 to avoid lag.
+     */
     fun selectBestServer(activity: android.app.Activity? = null) {
         if (isScanningBest) return
+        if (servers.isEmpty()) {
+            lastError = "Нет серверов"
+            return
+        }
         isScanningBest = true
+        bestScanProgress = 0f
+        bestScanStatus = "1/4 Подготовка списка…"
+        workStatus = bestScanStatus
+        workProgress = 0f
         viewModelScope.launch {
-            val totalMs = pingSeconds * 1000
-            val step = (totalMs / 4).coerceAtLeast(200)
-            // Probe each server with samples over interval
-            val results = servers.associate { s ->
-                val samples = mutableListOf<Int>()
-                var elapsed = 0
-                while (elapsed < totalMs) {
-                    delay(step.toLong() / (servers.size.coerceAtLeast(1)).coerceAtMost(8))
-                    elapsed += step
-                    samples.add((12..160).random())
-                }
-                s.id to (samples.average().toInt())
-            }
-            servers = servers.map { it.copy(latencyMs = results[it.id] ?: it.latencyMs) }
-            val best = servers.minByOrNull { it.latencyMs ?: 9999 }
-            if (best != null) {
-                selectServer(best)
-                lastPingMs = best.latencyMs
-                // Reconnect if was connected
-                if (connState == ConnState.CONNECTED || VpEgsVpnService.isConnected) {
-                    val act = activity
-                    if (act != null) {
-                        disconnect(act)
-                        delay(700)
-                        prepareAndToggle(act)
-                    } else {
-                        appContext?.let { ctx ->
-                            ctx.startService(Intent(ctx, VpEgsVpnService::class.java).apply {
-                                action = VpEgsVpnService.ACTION_DISCONNECT
-                            })
-                            delay(700)
-                            val cfg = configByServerId[best.id]
-                            if (!cfg.isNullOrBlank()) {
-                                ctx.startForegroundService(Intent(ctx, VpEgsVpnService::class.java).apply {
-                                    action = VpEgsVpnService.ACTION_CONNECT
-                                    putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, "${best.flag} ${best.name}")
-                                    putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
-                                })
+            try {
+                val list = servers.toList()
+                val total = list.size.coerceAtLeast(1)
+                bestScanStatus = "2/4 Проверка доступности ($total шт.)…"
+                workStatus = bestScanStatus
+                bestScanProgress = 0.1f
+                workProgress = 0.1f
+
+                val sem = Semaphore(8)
+                val done = java.util.concurrent.atomic.AtomicInteger(0)
+                val results = coroutineScope {
+                    list.map { s ->
+                        async(Dispatchers.IO) {
+                            sem.withPermit {
+                                val ms = tcpPing(s.address, s.port, 1600)
+                                val n = done.incrementAndGet()
+                                // UI updates throttled via Main
+                                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                    bestScanProgress = 0.1f + 0.7f * (n.toFloat() / total)
+                                    workProgress = bestScanProgress
+                                    bestScanStatus = "2/4 Проверка $n/$total · ${s.name.take(28)}"
+                                    workStatus = bestScanStatus
+                                }
+                                s.id to ms
                             }
                         }
+                    }.awaitAll()
+                }
+
+                bestScanStatus = "3/4 Отбор доступных…"
+                workStatus = bestScanStatus
+                bestScanProgress = 0.85f
+                workProgress = 0.85f
+
+                val reachable = results.mapNotNull { (id, ms) ->
+                    if (ms != null) id to ms else null
+                }.toMap()
+
+                servers = servers.map { s ->
+                    s.copy(latencyMs = reachable[s.id])
+                }
+                selectedServer = servers.find { it.id == selectedServer?.id }
+
+                val best = servers
+                    .filter { it.latencyMs != null }
+                    .minByOrNull { it.latencyMs!! }
+
+                bestScanStatus = "4/4 Применение…"
+                workStatus = bestScanStatus
+                bestScanProgress = 0.95f
+                workProgress = 0.95f
+
+                if (best == null) {
+                    lastError = "Нет доступных серверов"
+                    bestScanStatus = "Ни один сервер не ответил"
+                    workStatus = bestScanStatus
+                } else {
+                    selectServer(best)
+                    lastPingMs = best.latencyMs
+                    lastError = null
+                    bestScanStatus = "Лучший: ${best.name} · ${best.latencyMs} ms"
+                    workStatus = bestScanStatus
+                    if (connState == ConnState.CONNECTED || VpEgsVpnService.isConnected) {
+                        val act = activity
+                        if (act != null) {
+                            disconnect(act)
+                            delay(600)
+                            prepareAndToggle(act)
+                        } else {
+                            appContext?.let { ctx ->
+                                ctx.startService(Intent(ctx, VpEgsVpnService::class.java).apply {
+                                    action = VpEgsVpnService.ACTION_DISCONNECT
+                                })
+                                delay(600)
+                                val cfg = configByServerId[best.id]
+                                if (!cfg.isNullOrBlank()) {
+                                    ctx.startForegroundService(Intent(ctx, VpEgsVpnService::class.java).apply {
+                                        action = VpEgsVpnService.ACTION_CONNECT
+                                        putExtra(VpEgsVpnService.EXTRA_SERVER_NAME, "${best.flag} ${best.name}")
+                                        putExtra(VpEgsVpnService.EXTRA_CONFIG_JSON, cfg)
+                                    })
+                                }
+                            }
+                        }
+                        delay(1200)
+                        refreshPublicIp()
                     }
-                    delay(1500)
-                    refreshPublicIp()
+                }
+                bestScanProgress = 1f
+                workProgress = 1f
+            } finally {
+                isScanningBest = false
+                delay(1800)
+                bestScanStatus = ""
+                bestScanProgress = 0f
+                if (!isPinging) {
+                    workStatus = ""
+                    workProgress = 0f
                 }
             }
-            isScanningBest = false
         }
     }
 
     fun refreshAll(silent: Boolean = false) {
         viewModelScope.launch {
-            val totalMs = if (silent) 400 else pingSeconds * 1000
-            val step = (totalMs / 5).coerceAtLeast(150)
-            // multi-sample average latency per server
-            val avgs = servers.associate { s ->
-                val samples = mutableListOf<Int>()
-                var elapsed = 0
-                while (elapsed < totalMs) {
-                    delay((step / servers.size.coerceAtLeast(1)).coerceAtLeast(30).toLong())
-                    elapsed += step
-                    samples.add((15..200).random())
-                }
-                s.id to samples.average().toInt()
+            val list = servers.toList()
+            if (list.isEmpty()) return@launch
+            if (!silent) {
+                workStatus = "Проверка серверов…"
+                workProgress = 0.05f
             }
-            servers = servers.map { it.copy(latencyMs = avgs[it.id] ?: it.latencyMs) }
+            val sem = Semaphore(8)
+            val done = java.util.concurrent.atomic.AtomicInteger(0)
+            val total = list.size
+            val avgs = coroutineScope {
+                list.map { s ->
+                    async(Dispatchers.IO) {
+                        sem.withPermit {
+                            val ms = tcpPing(s.address, s.port, 1500)
+                            val n = done.incrementAndGet()
+                            if (!silent) {
+                                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                    workProgress = n.toFloat() / total
+                                    workStatus = "Пинг $n/$total · ${s.name.take(24)}"
+                                }
+                            }
+                            s.id to ms
+                        }
+                    }
+                }.awaitAll().toMap()
+            }
+            servers = servers.map { it.copy(latencyMs = avgs[it.id]) }
             selectedServer = servers.find { it.id == selectedServer?.id }
             lastPingMs = selectedServer?.latencyMs
             subscriptions = subscriptions.map {
-                it.copy(lastUpdated = System.currentTimeMillis(), serversCount = servers.count { s -> s.subscriptionId == it.id })
+                it.copy(
+                    lastUpdated = System.currentTimeMillis(),
+                    serversCount = servers.count { s -> s.subscriptionId == it.id }
+                )
+            }
+            if (!silent) {
+                workStatus = "Готово"
+                workProgress = 1f
+                delay(800)
+                workStatus = ""
+                workProgress = 0f
             }
         }
     }
@@ -470,7 +582,18 @@ class MainViewModel : ViewModel() {
     fun updateServerSort(s: ServerSort) { serverSort = s }
     fun updateAutoUpdateOnLaunch(v: Boolean) { autoUpdateOnLaunch = v; persist() }
     fun updateGlobalProxyMode(v: Boolean) { globalProxyMode = v; persist() }
-    fun updateInvertAppProxy(v: Boolean) { invertAppProxy = v; persist() }
+    fun updateInvertAppProxy(v: Boolean) {
+        if (v == invertAppProxy) return
+        invertAppProxy = v
+        // Flip toggles visually: was VPN → Напрямую and vice versa
+        appProxyList = appProxyList.map { it.copy(proxyEnabled = !it.proxyEnabled) }
+        val bypass = appProxyList.filter { !it.proxyEnabled }.map { it.packageName }.toSet()
+        appContext?.let {
+            Prefs.saveBypassPackages(it, bypass)
+            Prefs.saveSettings(it, globalProxyMode, invertAppProxy, autoUpdateOnLaunch)
+        }
+        persist()
+    }
     fun updateShowServerProtocol(v: Boolean) {
         showServerProtocol = v
         appContext?.let { Prefs.saveServersUi(it, showServerProtocol, showServerIp) }
@@ -532,7 +655,11 @@ class MainViewModel : ViewModel() {
         // Fetch + parse in background
         viewModelScope.launch {
             try {
+                workStatus = "Загрузка подписки…"
+                workProgress = 0.2f
                 val fr = withContext(Dispatchers.IO) { fetchSubscription(url) }
+                workStatus = "Разбор серверов…"
+                workProgress = 0.55f
                 val body = fr.body
                 val list = com.vpegs.ms.core.LinkParser.parseSubscriptionBody(body, subId, subName).toMutableList()
                 if (list.isEmpty()) {
@@ -560,8 +687,15 @@ class MainViewModel : ViewModel() {
                 } else {
                     persist()
                 }
+                workStatus = "Подписка: ${nodes.size} серверов"
+                workProgress = 1f
+                delay(900)
+                workStatus = ""
+                workProgress = 0f
             } catch (e: Exception) {
                 e.printStackTrace()
+                workStatus = "Ошибка: ${e.message?.take(40)}"
+                workProgress = 0f
             }
         }
     }

@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vpegs.ms.BuildConfig
 import com.vpegs.ms.ui.components.GlassCard
+import com.vpegs.ms.ui.components.GlassSwitch
 import com.vpegs.ms.ui.theme.*
 import com.vpegs.ms.viewmodel.MainViewModel
 
@@ -133,11 +134,7 @@ fun SettingsScreen(vm: MainViewModel) {
                     Text("Протокол у сервера", style = MaterialTheme.typography.bodyLarge, color = GlassText)
                     Text("Бейдж VLESS / Reality и т.д.", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
                 }
-                Switch(
-                    checked = vm.showServerProtocol,
-                    onCheckedChange = { vm.updateShowServerProtocol(it) },
-                    colors = SwitchDefaults.colors(checkedThumbColor = GlassAccent, checkedTrackColor = GlassAccent.copy(0.35f))
-                )
+                GlassSwitch(checked = vm.showServerProtocol, onCheckedChange = { vm.updateShowServerProtocol(it) })
             }
             Spacer(Modifier.height(10.dp))
             HorizontalDivider(color = GlassBorder)
@@ -147,11 +144,7 @@ fun SettingsScreen(vm: MainViewModel) {
                     Text("IP у сервера", style = MaterialTheme.typography.bodyLarge, color = GlassText)
                     Text("Флаг + адрес, например 🇫🇷 1.2.3.4", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
                 }
-                Switch(
-                    checked = vm.showServerIp,
-                    onCheckedChange = { vm.updateShowServerIp(it) },
-                    colors = SwitchDefaults.colors(checkedThumbColor = GlassAccent, checkedTrackColor = GlassAccent.copy(0.35f))
-                )
+                GlassSwitch(checked = vm.showServerIp, onCheckedChange = { vm.updateShowServerIp(it) })
             }
         }
 
@@ -166,14 +159,7 @@ fun SettingsScreen(vm: MainViewModel) {
                     Text("Автообновление при запуске", style = MaterialTheme.typography.bodyLarge, color = GlassText)
                     Text("Обновлять подписки при открытии", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
                 }
-                Switch(
-                    checked = vm.autoUpdateOnLaunch,
-                    onCheckedChange = { vm.updateAutoUpdateOnLaunch(it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = GlassAccent,
-                        checkedTrackColor = GlassAccent.copy(0.35f)
-                    )
-                )
+                GlassSwitch(checked = vm.autoUpdateOnLaunch, onCheckedChange = { vm.updateAutoUpdateOnLaunch(it) })
             }
             Spacer(Modifier.height(12.dp))
             HorizontalDivider(color = GlassBorder)
@@ -194,14 +180,7 @@ fun SettingsScreen(vm: MainViewModel) {
                     Text("Фоновое обновление", style = MaterialTheme.typography.bodyLarge, color = GlassText)
                     Text("Даже когда приложение закрыто", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
                 }
-                Switch(
-                    checked = vm.bgUpdateEnabled,
-                    onCheckedChange = { vm.updateBgUpdateEnabled(it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = GlassAccent,
-                        checkedTrackColor = GlassAccent.copy(0.35f)
-                    )
-                )
+                GlassSwitch(checked = vm.bgUpdateEnabled, onCheckedChange = { vm.updateBgUpdateEnabled(it) })
             }
         }
 

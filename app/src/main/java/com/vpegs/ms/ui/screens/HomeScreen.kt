@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vpegs.ms.data.ConnState
 import com.vpegs.ms.ui.components.*
+import com.vpegs.ms.ui.components.GlassProgressBar
 import com.vpegs.ms.ui.theme.*
 import com.vpegs.ms.viewmodel.MainViewModel
 
@@ -158,6 +159,13 @@ fun HomeScreen(vm: MainViewModel) {
             ActionChip("Пинг", vm.isPinging) { vm.pingCurrent() }
             ActionChip("Обновить", false) { vm.refreshCurrentServer() }
             ActionChip("Лучший", vm.isScanningBest, accent = true) { vm.selectBestServer(activity) }
+        }
+
+        if (vm.workProgress > 0f || vm.workStatus.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            GlassCard(Modifier.fillMaxWidth()) {
+                GlassProgressBar(vm.workProgress, label = vm.workStatus.ifBlank { null })
+            }
         }
 
         Spacer(Modifier.height(18.dp))
