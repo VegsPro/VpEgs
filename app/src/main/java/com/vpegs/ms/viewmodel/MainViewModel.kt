@@ -1317,7 +1317,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                 val remote = withContext(Dispatchers.IO) { AppUpdater.fetchLatest() }
                 if (remote == null) {
                     workStatus = "Не удалось проверить обновления"
-                    kotlinx.coroutines.delay(1800)
+                    kotlinx.coroutines.delay(900)
                     workStatus = ""
                     return@launch
                 }
@@ -1327,7 +1327,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                     updateDownloaded = false
                     updateApkPath = null
                     workStatus = "Установлена актуальная версия"
-                    kotlinx.coroutines.delay(1500)
+                    kotlinx.coroutines.delay(800)
                     workStatus = ""
                     return@launch
                 }

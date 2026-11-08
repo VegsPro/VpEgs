@@ -9,14 +9,16 @@ import androidx.core.content.FileProvider
 import com.vpegs.ms.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
+import java.io.FileOutputStream
+import java.util.concurrent.TimeUnit
 
 /**
  * Checks GitHub Releases for a newer APK, downloads once to cache, installs via FileProvider.
- * Never re-downloads the same versionCode if the file is already in cache.
+ * Download path is optimized: OkHttp pool, large buffers, minimal UI churn.
  */
 object AppUpdater {
     private const val API =
@@ -25,8 +27,20 @@ object AppUpdater {
     private const val KEY_DISMISSED = "dismissed_version_code"
     private const val KEY_DECLINED = "declined_count_version"
     private const val KEY_DECLINED_N = "declined_n"
-    private const val KEY_LAST_REMOTE = "last_remote_code"
     private const val KEY_CACHED_CODE = "cached_apk_code"
+
+    /** Shared client — connection reuse between check + download. */
+    private val http: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS) // no overall cap for big APK
+            .retryOnConnectionFailure(true)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build()
+    }
 
     data class RemoteInfo(
         val versionCode: Int,
@@ -67,7 +81,6 @@ object AppUpdater {
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /** True only if remote is strictly newer than the installed APK. */
     fun isNewer(remote: RemoteInfo): Boolean =
         remote.versionCode > BuildConfig.VERSION_CODE
 
@@ -78,94 +91,125 @@ object AppUpdater {
 
     suspend fun fetchLatest(): RemoteInfo? = withContext(Dispatchers.IO) {
         try {
-            val conn = (URL(API).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 12000
-                readTimeout = 15000
-                setRequestProperty("Accept", "application/vnd.github+json")
-                setRequestProperty("User-Agent", "VpEgs/${BuildConfig.VERSION_NAME}")
-            }
-            if (conn.responseCode !in 200..299) return@withContext null
-            val body = conn.inputStream.bufferedReader().readText()
-            val json = JSONObject(body)
-            val tag = json.optString("tag_name", "")
-            var code = 0
-            var name = tag.removePrefix("v")
-            // CI tags: v48 → versionCode 48
-            tag.removePrefix("v").toIntOrNull()?.let { code = it }
-            val bodyText = json.optString("body", "")
-            Regex("""versionCode\s*[=:]\s*(\d+)""", RegexOption.IGNORE_CASE)
-                .find(bodyText)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { code = maxOf(code, it) }
-            Regex("""versionName\s*[=:]\s*([0-9.]+)""", RegexOption.IGNORE_CASE)
-                .find(bodyText)?.groupValues?.getOrNull(1)?.let { name = it }
+            val req = Request.Builder()
+                .url(API)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "VpEgs/${BuildConfig.VERSION_NAME}")
+                .get()
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val body = resp.body?.string() ?: return@withContext null
+                val json = JSONObject(body)
+                val tag = json.optString("tag_name", "")
+                var code = 0
+                var name = tag.removePrefix("v")
+                tag.removePrefix("v").toIntOrNull()?.let { code = it }
+                val bodyText = json.optString("body", "")
+                Regex("""versionCode\s*[=:]\s*(\d+)""", RegexOption.IGNORE_CASE)
+                    .find(bodyText)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                    ?.let { code = maxOf(code, it) }
+                Regex("""versionName\s*[=:]\s*([0-9.]+)""", RegexOption.IGNORE_CASE)
+                    .find(bodyText)?.groupValues?.getOrNull(1)?.let { name = it }
 
-            val assets = json.optJSONArray("assets") ?: return@withContext null
-            var apkUrl = ""
-            for (i in 0 until assets.length()) {
-                val a = assets.getJSONObject(i)
-                val an = a.optString("name")
-                if (an.endsWith(".apk", true)) {
-                    apkUrl = a.optString("browser_download_url")
-                    break
+                val assets = json.optJSONArray("assets") ?: return@withContext null
+                var apkUrl = ""
+                for (i in 0 until assets.length()) {
+                    val a = assets.getJSONObject(i)
+                    val n = a.optString("name", "")
+                    val url = a.optString("browser_download_url", "")
+                    if (n.endsWith(".apk", ignoreCase = true) && url.isNotBlank()) {
+                        apkUrl = url
+                        // Prefer app-debug.apk / release names with version
+                        if (n.contains("debug", true) || n.contains("release", true) ||
+                            n.contains("vpegs", true)
+                        ) break
+                    }
                 }
+                if (apkUrl.isBlank()) return@withContext null
+                if (code <= 0) {
+                    // Fallback: parse from asset name vpegs-48.apk / -v48
+                    Regex("""(\d{2,})""").find(tag)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                        ?.let { code = it }
+                }
+                if (code <= 0) code = BuildConfig.VERSION_CODE + 1
+                RemoteInfo(code, name.ifBlank { tag }, apkUrl, tag)
             }
-            if (apkUrl.isBlank() || code <= 0) return@withContext null
-            RemoteInfo(code, name.ifBlank { tag }, apkUrl, tag)
         } catch (_: Exception) {
             null
         }
     }
 
     /**
-     * Download only if file for this versionCode is missing.
-     * Returns existing file immediately when already cached.
+     * Fast path: OkHttp stream → FileOutputStream with 512 KiB buffer.
+     * Progress callbacks throttled (~every 2%) to avoid UI jank.
      */
-    suspend fun download(ctx: Context, info: RemoteInfo, onProgress: (Float) -> Unit): File? =
-        withContext(Dispatchers.IO) {
-            try {
-                val out = apkFile(ctx, info.versionCode)
-                if (out.exists() && out.length() > 100_000L) {
-                    onProgress(1f)
-                    prefs(ctx).edit().putInt(KEY_CACHED_CODE, info.versionCode).apply()
-                    return@withContext out
-                }
-                // purge other old apks
-                cacheDir(ctx).listFiles()?.forEach { f ->
-                    if (f.name.endsWith(".apk") && f != out) f.delete()
-                    if (f.name.endsWith(".part")) f.delete()
-                }
-                val tmp = File(out.absolutePath + ".part")
-                val conn = (URL(info.apkUrl).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 20000
-                    readTimeout = 120_000
-                    setRequestProperty("User-Agent", "VpEgs/${BuildConfig.VERSION_NAME}")
-                }
-                if (conn.responseCode !in 200..299) return@withContext null
-                val total = conn.contentLengthLong.coerceAtLeast(1L)
-                conn.inputStream.use { input ->
-                    tmp.outputStream().use { output ->
-                        val buf = ByteArray(64 * 1024)
+    suspend fun download(
+        ctx: Context,
+        info: RemoteInfo,
+        onProgress: (Float) -> Unit
+    ): File? = withContext(Dispatchers.IO) {
+        val out = apkFile(ctx, info.versionCode)
+        if (hasCachedApk(ctx, info.versionCode)) {
+            onProgress(1f)
+            return@withContext out
+        }
+        val tmp = File(out.parentFile, "${out.name}.part")
+        try {
+            if (tmp.exists()) tmp.delete()
+            val req = Request.Builder()
+                .url(info.apkUrl)
+                .header("User-Agent", "VpEgs/${BuildConfig.VERSION_NAME}")
+                .header("Accept", "application/octet-stream")
+                .get()
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val body = resp.body ?: return@withContext null
+                val total = body.contentLength().takeIf { it > 0 } ?: -1L
+                body.byteStream().use { input ->
+                    FileOutputStream(tmp).use { output ->
+                        val buf = ByteArray(512 * 1024) // 512 KiB
                         var read = 0L
+                        var lastPct = -1
                         while (true) {
                             val n = input.read(buf)
                             if (n <= 0) break
                             output.write(buf, 0, n)
                             read += n
-                            onProgress((read.toFloat() / total).coerceIn(0f, 1f))
+                            if (total > 0) {
+                                val pct = ((read * 100) / total).toInt()
+                                // Update UI only when percent changes by ≥2
+                                if (pct >= lastPct + 2 || pct >= 100) {
+                                    lastPct = pct
+                                    onProgress((read.toFloat() / total).coerceIn(0f, 1f))
+                                }
+                            } else if (read % (2L * 1024 * 1024) < buf.size) {
+                                // unknown size: pulse every ~2 MB
+                                onProgress((read % (20L * 1024 * 1024)).toFloat() / (20f * 1024 * 1024))
+                            }
                         }
+                        output.fd.sync()
                     }
                 }
-                if (out.exists()) out.delete()
-                if (!tmp.renameTo(out)) {
-                    tmp.copyTo(out, overwrite = true)
-                    tmp.delete()
-                }
-                prefs(ctx).edit().putInt(KEY_CACHED_CODE, info.versionCode).apply()
-                onProgress(1f)
-                out
-            } catch (_: Exception) {
-                null
             }
+            if (out.exists()) out.delete()
+            if (!tmp.renameTo(out)) {
+                tmp.copyTo(out, overwrite = true)
+                tmp.delete()
+            }
+            if (!out.exists() || out.length() < 100_000L) {
+                out.delete()
+                return@withContext null
+            }
+            prefs(ctx).edit().putInt(KEY_CACHED_CODE, info.versionCode).apply()
+            onProgress(1f)
+            out
+        } catch (_: Exception) {
+            try { tmp.delete() } catch (_: Exception) {}
+            null
         }
+    }
 
     fun install(activity: Activity, apk: File): Boolean {
         return try {
