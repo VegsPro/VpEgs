@@ -112,18 +112,6 @@ fun SettingsScreen(vm: MainViewModel) {
         }
 
         Spacer(Modifier.height(16.dp))
-        Text("Подписки", style = MaterialTheme.typography.titleMedium, color = GlassText)
-        Spacer(Modifier.height(8.dp))
-        GlassCard(Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Базовые сервера", style = MaterialTheme.typography.bodyLarge, color = GlassText)
-                    Text("⭐ VpEgs Config с GitHub", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
-                }
-                GlassSwitch(checked = vm.showBuiltinServers, onCheckedChange = { vm.updateShowBuiltin(it) })
-            }
-        }
-        Spacer(Modifier.height(16.dp))
         Text("Пинг", style = MaterialTheme.typography.titleMedium, color = GlassText)
         Spacer(Modifier.height(8.dp))
         GlassCard(Modifier.fillMaxWidth()) {
@@ -182,6 +170,16 @@ fun SettingsScreen(vm: MainViewModel) {
         Text("Подписки", style = MaterialTheme.typography.titleMedium, color = GlassText)
         Spacer(Modifier.height(8.dp))
         GlassCard(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Базовые сервера", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("⭐ VpEgs Config с GitHub", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(checked = vm.showBuiltinServers, onCheckedChange = { vm.updateShowBuiltin(it) })
+            }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = GlassBorder)
+            Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Update, null, tint = GlassPrimary)
                 Spacer(Modifier.width(12.dp))
