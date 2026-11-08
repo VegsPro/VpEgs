@@ -111,6 +111,90 @@ fun SettingsScreen(vm: MainViewModel) {
             }
         }
 
+
+        Spacer(Modifier.height(16.dp))
+        Text("Кнопка в шторке", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Spacer(Modifier.height(8.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("При включении — лучший сервер", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text(
+                        "Как «Лучший»: фильтры РФ / подписки, уведомление «Подбор сервера…»",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTextMuted
+                    )
+                }
+                GlassSwitch(
+                    checked = vm.tileUseBest,
+                    onCheckedChange = { vm.saveTileSettings(useBest = it) }
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = GlassBorder)
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Подзаголовок на плитке", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Имя сервера / Вкл·Выкл", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(
+                    checked = vm.tileShowSubtitle,
+                    onCheckedChange = { vm.saveTileSettings(showSubtitle = it) }
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = GlassBorder)
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Уведомление о подборе", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Системное «Подбор сервера…»", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(
+                    checked = vm.tileNotifyPick,
+                    onCheckedChange = { vm.saveTileSettings(notifyPick = it) }
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = GlassBorder)
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Только избранные", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Плитка ищет лучший среди ★", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(
+                    checked = vm.tileOnlyFavorites,
+                    onCheckedChange = { vm.saveTileSettings(onlyFavorites = it) }
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = GlassBorder)
+            Spacer(Modifier.height(12.dp))
+            Text("Макс. пинг для плитки", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+            Text(
+                if (vm.tileMaxPingMs <= 0) "Без ограничения"
+                else "Не брать серверы медленнее ${vm.tileMaxPingMs} ms",
+                style = MaterialTheme.typography.labelMedium,
+                color = GlassTextMuted
+            )
+            Slider(
+                value = vm.tileMaxPingMs.toFloat().coerceIn(0f, 500f),
+                onValueChange = { vm.saveTileSettings(maxPingMs = it.toInt()) },
+                valueRange = 0f..500f,
+                steps = 9,
+                colors = SliderDefaults.colors(
+                    thumbColor = GlassAccent,
+                    activeTrackColor = GlassPrimary
+                )
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("выкл", color = GlassTextMuted, style = MaterialTheme.typography.labelSmall)
+                Text("500 ms", color = GlassTextMuted, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         Text("Пинг", style = MaterialTheme.typography.titleMedium, color = GlassText)
         Spacer(Modifier.height(8.dp))

@@ -141,6 +141,12 @@ class MainViewModel : ViewModel() {
     var bestAllSubs by mutableStateOf(true)
     var bestSubIds by mutableStateOf<Set<String>>(emptySet())
     var showBestSettings by mutableStateOf(false)
+    var tileUseBest by mutableStateOf(true)
+    var tileShowSubtitle by mutableStateOf(true)
+    var tileNotifyPick by mutableStateOf(true)
+    var tileOnlyFavorites by mutableStateOf(false)
+    var tileMaxPingMs by mutableStateOf(0)
+
     /** Cached grouping for Servers tab — invalidated on data change */
     private var groupsCacheKey: String = ""
     private var groupsCache: List<Pair<Subscription, List<ServerNode>>> = emptyList()
@@ -199,6 +205,11 @@ class MainViewModel : ViewModel() {
             bestAllowRu = Prefs.loadBestAllowRu(ctx)
             bestAllSubs = Prefs.loadBestAllSubs(ctx)
             bestSubIds = Prefs.loadBestSubIds(ctx)
+            tileUseBest = Prefs.loadTileUseBest(ctx)
+            tileShowSubtitle = Prefs.loadTileShowSubtitle(ctx)
+            tileNotifyPick = Prefs.loadTileNotifyPick(ctx)
+            tileOnlyFavorites = Prefs.loadTileOnlyFavorites(ctx)
+            tileMaxPingMs = Prefs.loadTileMaxPingMs(ctx)
             val order = Prefs.loadSubOrder(ctx)
             if (order.isNotEmpty()) {
                 val map = subscriptions.associateBy { it.id }
@@ -723,6 +734,23 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
     fun toggleSubExpanded(id: String) {
         expandedSubIds = if (id in expandedSubIds) expandedSubIds - id else expandedSubIds + id
         appContext?.let { Prefs.saveExpandedSubs(it, expandedSubIds) }
+    }
+
+    fun saveTileSettings(
+        useBest: Boolean = tileUseBest,
+        showSubtitle: Boolean = tileShowSubtitle,
+        notifyPick: Boolean = tileNotifyPick,
+        onlyFavorites: Boolean = tileOnlyFavorites,
+        maxPingMs: Int = tileMaxPingMs
+    ) {
+        tileUseBest = useBest
+        tileShowSubtitle = showSubtitle
+        tileNotifyPick = notifyPick
+        tileOnlyFavorites = onlyFavorites
+        tileMaxPingMs = maxPingMs
+        appContext?.let {
+            Prefs.saveTileSettings(it, useBest, showSubtitle, notifyPick, onlyFavorites, maxPingMs)
+        }
     }
 
     fun saveBestSettings(allowRu: Boolean, allSubs: Boolean, ids: Set<String>) {

@@ -237,6 +237,28 @@ object Prefs {
     }
     fun loadBestAllowRu(ctx: Context) = sp(ctx).getBoolean("best_allow_ru", true)
     fun loadBestAllSubs(ctx: Context) = sp(ctx).getBoolean("best_all_subs", true)
+    fun saveTileSettings(
+        ctx: Context,
+        useBest: Boolean,
+        showSubtitle: Boolean,
+        notifyPick: Boolean,
+        onlyFavorites: Boolean,
+        maxPingMs: Int
+    ) {
+        sp(ctx).edit()
+            .putBoolean("tile_use_best", useBest)
+            .putBoolean("tile_show_subtitle", showSubtitle)
+            .putBoolean("tile_notify_pick", notifyPick)
+            .putBoolean("tile_only_favorites", onlyFavorites)
+            .putInt("tile_max_ping_ms", maxPingMs)
+            .apply()
+    }
+    fun loadTileUseBest(ctx: Context) = sp(ctx).getBoolean("tile_use_best", true)
+    fun loadTileShowSubtitle(ctx: Context) = sp(ctx).getBoolean("tile_show_subtitle", true)
+    fun loadTileNotifyPick(ctx: Context) = sp(ctx).getBoolean("tile_notify_pick", true)
+    fun loadTileOnlyFavorites(ctx: Context) = sp(ctx).getBoolean("tile_only_favorites", false)
+    fun loadTileMaxPingMs(ctx: Context) = sp(ctx).getInt("tile_max_ping_ms", 0)
+
     fun loadBestSubIds(ctx: Context): Set<String> {
         val s = sp(ctx).getString("best_sub_ids", "") ?: ""
         return s.split("|").filter { it.isNotBlank() }.toSet()
