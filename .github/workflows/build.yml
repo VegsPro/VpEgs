@@ -16,26 +16,34 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.10.2'
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
       - name: Download native libs
         run: |
           mkdir -p app/libs
-          curl -L --retry 5 -o app/libs/libv2ray.aar \
-            "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar"
-          curl -L --retry 5 -o app/libs/hev-socks5-tunnel.aar \
-            "https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar"
+          for i in 1 2 3 4 5; do
+            curl -fL --retry 3 -o app/libs/libv2ray.aar \
+              "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar" && break
+            sleep 5
+          done
+          for i in 1 2 3 4 5; do
+            curl -fL --retry 3 -o app/libs/hev-socks5-tunnel.aar \
+              "https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar" && break
+            sleep 5
+          done
+          # Validate AARs are zip archives
+          unzip -t app/libs/libv2ray.aar | tail -2
+          unzip -t app/libs/hev-socks5-tunnel.aar | tail -2
           ls -lh app/libs/
       - name: Bump versionCode to run number
         run: |
           sed -i "s/versionCode = .*/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
           sed -i 's/versionName = .*/versionName = "1.9.${{ github.run_number }}"/' app/build.gradle.kts
           grep -E "versionCode|versionName" app/build.gradle.kts
+      - run: chmod +x ./gradlew
       - name: Assemble debug APK
-        run: gradle assembleDebug --stacktrace --no-daemon
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: VpEgs-APK
