@@ -13,7 +13,7 @@ object BuiltInConfigSources {
      * Raw text / base64 subscription URLs aggregated from open GitHub projects.
      * Order: prefer mixed protocol lists that update often.
      */
-    val urls: list<String> = listOf(
+    val urls: List<String> = listOf(
         // pog7x aggregator mirrors (updated ~hourly)
         "https://raw.githubusercontent.com/pog7x/vpn-configs/master/githubmirror/1.txt",
         "https://raw.githubusercontent.com/pog7x/vpn-configs/master/githubmirror/3.txt",
