@@ -135,6 +135,7 @@ class MainViewModel : ViewModel() {
     var pingingIds by mutableStateOf<Set<String>>(emptySet())
         private set
     var reorderSubsMode by mutableStateOf(false)
+        // public for Servers UI
         private set
     var autoUpdateOnLaunch by mutableStateOf(true)
         private set
@@ -481,18 +482,16 @@ class MainViewModel : ViewModel() {
         }
         isScanningBest = true
         bestScanProgress = 0f
-        pingingIds = servers.map { it.id }.toSet()
-                    bestScanStatus = "1/4 Подготовка списка…"
+        bestScanStatus = "1/4 Подготовка списка…"
         workStatus = bestScanStatus
         workProgress = 0f
         viewModelScope.launch {
             try {
                 val list = servers.toList()
                 val total = list.size.coerceAtLeast(1)
-                pingingIds = servers.map { it.id }.toSet()
-                    bestScanStatus = "2/4 Проверка доступности ($total шт.)…"
+                pingingIds = list.map { it.id }.toSet()
+                bestScanStatus = "2/4 Проверка доступности ($total шт.)…"
                 workStatus = bestScanStatus
-                pingingIds = targets.map { it.id }.toSet()
                 bestScanProgress = 0.1f
                 workProgress = 0.1f
 
@@ -504,12 +503,11 @@ class MainViewModel : ViewModel() {
                             sem.withPermit {
                                 val ms = tcpPing(s.address, s.port, 1600)
                                 val n = done.incrementAndGet()
-                                // UI updates throttled via Main
-                                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                withContext(Dispatchers.Main) {
                                     bestScanProgress = 0.1f + 0.7f * (n.toFloat() / total)
                                     workProgress = bestScanProgress
-                                    pingingIds = servers.map { it.id }.toSet()
-                    bestScanStatus = "2/4 Проверка $n/$total · ${s.name.take(28)}"
+                                    pingingIds = pingingIds - s.id
+                                    bestScanStatus = "2/4 Проверка $n/$total · ${s.name.take(28)}"
                                     workStatus = bestScanStatus
                                 }
                                 s.id to ms
@@ -518,56 +516,38 @@ class MainViewModel : ViewModel() {
                     }.awaitAll()
                 }
 
-                pingingIds = servers.map { it.id }.toSet()
-                    bestScanStatus = "3/4 Отбор доступных…"
-                workStatus = bestScanStatus
-                bestScanProgress = 0.85f
-                workProgress = 0.85f
-
                 pingingIds = emptySet()
+                bestScanStatus = "3/4 Отбор доступных…"
+                workStatus = bestScanStatus
                 val reachable = results.mapNotNull { (id, ms) ->
                     if (ms != null) id to ms else null
                 }.toMap()
-
                 servers = servers.map { s ->
                     s.copy(latencyMs = reachable[s.id] ?: -1)
                 }
-                selectedServer = servers.find { it.id == selectedServer?.id }
-
                 val best = servers
-                    .filter { it.latencyMs != null }
+                    .filter { it.latencyMs != null && it.latencyMs!! >= 0 }
                     .minByOrNull { it.latencyMs!! }
 
-                pingingIds = servers.map { it.id }.toSet()
-                    bestScanStatus = "4/4 Применение…"
+                bestScanStatus = "4/4 Применение…"
                 workStatus = bestScanStatus
-                bestScanProgress = 0.95f
-                workProgress = 0.95f
-
                 if (best == null) {
-                    lastError = "Нет доступных серверов"
-                    pingingIds = servers.map { it.id }.toSet()
                     bestScanStatus = "Ни один сервер не ответил"
                     workStatus = bestScanStatus
+                    lastError = bestScanStatus
                 } else {
                     selectServer(best)
                     lastPingMs = best.latencyMs
-                    lastError = null
-                    pingingIds = servers.map { it.id }.toSet()
                     bestScanStatus = "Лучший: ${best.name} · ${best.latencyMs} ms"
                     workStatus = bestScanStatus
-                    if (connState == ConnState.CONNECTED || VpEgsVpnService.isConnected) {
-                        val act = activity
-                        if (act != null) {
+                    val act = activity
+                    if (act != null) {
+                        if (connState == ConnState.CONNECTED) {
                             disconnect(act)
                             delay(600)
                             prepareAndToggle(act)
                         } else {
                             appContext?.let { ctx ->
-                                ctx.startService(Intent(ctx, VpEgsVpnService::class.java).apply {
-                                    action = VpEgsVpnService.ACTION_DISCONNECT
-                                })
-                                delay(600)
                                 val cfg = configByServerId[best.id]
                                 if (!cfg.isNullOrBlank()) {
                                     ctx.startForegroundService(Intent(ctx, VpEgsVpnService::class.java).apply {
