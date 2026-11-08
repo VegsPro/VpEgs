@@ -41,32 +41,14 @@ jobs:
           unzip -q gradle-8.9-bin.zip
           echo "/tmp/gradle-8.9/bin" >> "$GITHUB_PATH"
           /tmp/gradle-8.9/bin/gradle -v
-      - name: Download native libs
+      - name: Native libs
         run: |
-          set -e
           mkdir -p app/libs
-          download() {
-            dest="$1"; shift
-            for url in "$@"; do
-              echo "try $url"
-              if curl -fL --retry 2 --retry-delay 3 --connect-timeout 30 -o "$dest" "$url"; then
-                if unzip -t "$dest" >/dev/null 2>&1; then
-                  echo "ok $dest"; return 0
-                fi
-              fi
-              rm -f "$dest"
-            done
-            return 1
-          }
-          if [ -f app/libs/hev-socks5-tunnel.aar ] && unzip -t app/libs/hev-socks5-tunnel.aar >/dev/null 2>&1; then
-            echo "using committed hev-socks5-tunnel.aar"
-          else
-            HV="https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar"
-            download app/libs/hev-socks5-tunnel.aar "$HV" "https://ghproxy.net/$HV"
-          fi
-          V2="https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar"
-          download app/libs/libv2ray.aar "$V2" "https://ghproxy.net/$V2" "https://mirror.ghproxy.com/$V2"
           ls -lh app/libs/
+          test -f app/libs/libv2ray.aar
+          test -f app/libs/hev-socks5-tunnel.aar
+          unzip -t app/libs/libv2ray.aar | tail -1
+          unzip -t app/libs/hev-socks5-tunnel.aar | tail -1
       - name: Bump versionCode to run number
         run: |
           sed -i "s/versionCode = .*/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
