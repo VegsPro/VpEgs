@@ -6,10 +6,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Reorder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -18,220 +22,202 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vpegs.ms.data.ServerNode
 import com.vpegs.ms.data.Subscription
-import com.vpegs.ms.ui.components.LatencyText
 import com.vpegs.ms.ui.components.GlassProgressBar
 import com.vpegs.ms.ui.components.ProtocolBadge
 import com.vpegs.ms.ui.theme.*
 import com.vpegs.ms.viewmodel.MainViewModel
+import com.vpegs.ms.viewmodel.ServerSort
 import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
 fun ServersScreen(vm: MainViewModel) {
-    val groups = remember(vm.servers, vm.subscriptions, vm.searchQuery, vm.showOnlyFavorites, vm.serverSort) {
-        vm.serversBySubscription()
+    // Cheap keys only — avoid recompute on every latency tick of unrelated fields
+    val groups by remember {
+        derivedStateOf { vm.serversBySubscription() }
     }
-    val expandedIds = remember { mutableStateOf(vm.subscriptions.map { it.id }.toSet()) }
+    // Collapse all by default for performance; expand on demand
+    var expandedIds by remember { mutableStateOf(setOf<String>()) }
     var sortMenu by remember { mutableStateOf(false) }
 
-    // Expand newly added subscriptions
-    LaunchedEffect(vm.subscriptions.map { it.id }) {
-        expandedIds.value = expandedIds.value + vm.subscriptions.map { it.id }
-    }
-
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(top = 8.dp)) {
-        Text("Серверы", style = MaterialTheme.typography.titleLarge, color = GlassText)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Серверы", style = MaterialTheme.typography.titleLarge, color = GlassText, modifier = Modifier.weight(1f))
+            IconButton(onClick = { vm.reorderSubsMode = !vm.reorderSubsMode }) {
+                Icon(
+                    Icons.Default.Reorder,
+                    contentDescription = "Порядок",
+                    tint = if (vm.reorderSubsMode) GlassPrimary else GlassTextMuted
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
+
+        if (vm.reorderSubsMode) {
+            Text(
+                "Порядок подписок — стрелки вверх/вниз",
+                style = MaterialTheme.typography.labelMedium,
+                color = GlassTextMuted
+            )
+            Spacer(Modifier.height(8.dp))
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 120.dp)
+            ) {
+                itemsIndexed(vm.subscriptions, key = { _, s -> s.id }) { index, sub ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(GlassSurfaceHigh.copy(alpha = 0.55f))
+                            .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("☰", color = GlassTextMuted, fontSize = 18.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(sub.name, color = GlassText, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Text("${sub.serversCount} серверов", color = GlassTextMuted, style = MaterialTheme.typography.labelSmall)
+                        }
+                        IconButton(
+                            onClick = { vm.reorderSubscription(sub.id, -1) },
+                            enabled = index > 0
+                        ) { Icon(Icons.Default.KeyboardArrowUp, null, tint = GlassPrimary) }
+                        IconButton(
+                            onClick = { vm.reorderSubscription(sub.id, 1) },
+                            enabled = index < vm.subscriptions.lastIndex
+                        ) { Icon(Icons.Default.KeyboardArrowDown, null, tint = GlassPrimary) }
+                    }
+                }
+            }
+            return@Column
+        }
 
         OutlinedTextField(
             value = vm.searchQuery,
             onValueChange = { vm.updateSearch(it) },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Поиск по региону / протоколу…") },
-            leadingIcon = { Icon(Icons.Default.Search, null) },
+            placeholder = { Text("Поиск по региону / протоколу…", color = GlassTextMuted) },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = GlassTextMuted) },
             singleLine = true,
-            shape = RoundedCornerShape(14.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = GlassPrimary,
                 unfocusedBorderColor = GlassBorder,
-                focusedContainerColor = GlassSurfaceHigh,
-                unfocusedContainerColor = GlassSurfaceHigh
+                focusedTextColor = GlassText,
+                unfocusedTextColor = GlassText
             )
         )
-
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Сортировка", color = GlassTextMuted, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.width(8.dp))
             Box {
-                AssistChip(
-                    onClick = { sortMenu = true },
-                    label = { Text(vm.serverSort.title) },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = GlassSurfaceHigh,
-                        labelColor = GlassPrimary
-                    )
-                )
+                OutlinedButton(onClick = { sortMenu = true }) {
+                    Text(vm.serverSort.title, color = GlassText)
+                }
                 DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                    com.vpegs.ms.viewmodel.ServerSort.entries.forEach { s ->
+                    ServerSort.entries.forEach { s ->
                         DropdownMenuItem(
-                            text = { Text(s.title, color = GlassText) },
-                            onClick = { vm.updateServerSort(s); sortMenu = false }
+                            text = { Text(s.title) },
+                            onClick = {
+                                vm.updateServerSort(s)
+                                sortMenu = false
+                            }
                         )
                     }
                 }
             }
+            Spacer(Modifier.weight(1f))
+            FilterChip(
+                selected = vm.showOnlyFavorites,
+                onClick = { vm.toggleFavoritesFilter() },
+                label = { Text("★") }
+            )
         }
-        Spacer(Modifier.height(12.dp))
 
         if (vm.workProgress > 0f || vm.workStatus.isNotBlank()) {
-            GlassProgressBar(vm.workProgress, Modifier.padding(bottom = 10.dp), label = vm.workStatus.ifBlank { null })
+            Spacer(Modifier.height(6.dp))
+            GlassProgressBar(vm.workProgress, label = vm.workStatus.ifBlank { null })
         }
-        if (vm.subscriptions.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Нет подписок", style = MaterialTheme.typography.titleMedium, color = GlassText)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Добавьте подписку на вкладке «Подписки».\nДемо-серверов нет — только ваши.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GlassTextMuted
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 120.dp)
-            ) {
-                items(groups, key = { it.first.id }) { (sub, nodes) ->
-                    SubscriptionGroup(
-                        sub = sub,
-                        nodes = nodes,
-                        expanded = expandedIds.value.contains(sub.id),
-                        showProtocol = vm.showServerProtocol,
-                        showIp = vm.showServerIp,
-                        onToggleExpand = {
-                            expandedIds.value = if (expandedIds.value.contains(sub.id))
-                                expandedIds.value - sub.id
-                            else
-                                expandedIds.value + sub.id
-                        },
-                        onSelect = { vm.selectServer(it) },
-                        onFavorite = { vm.toggleFavorite(it) },
-                        onRefresh = { vm.refreshAll() }
-                    )
-                }
+
+        Spacer(Modifier.height(8.dp))
+
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 120.dp)
+        ) {
+            items(groups, key = { it.first.id }) { (sub, nodes) ->
+                val open = sub.id in expandedIds
+                SubGroupCard(
+                    sub = sub,
+                    nodes = nodes,
+                    expanded = open,
+                    showProtocol = vm.showServerProtocol,
+                    showIp = vm.showServerIp,
+                    pingingIds = vm.pingingIds,
+                    onToggle = {
+                        expandedIds = if (open) expandedIds - sub.id else expandedIds + sub.id
+                    },
+                    onSelect = { vm.selectServer(it) },
+                    onFavorite = { vm.toggleFavorite(it) },
+                    onRefresh = { vm.refreshSubscription(sub.id) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SubscriptionGroup(
+private fun SubGroupCard(
     sub: Subscription,
     nodes: List<ServerNode>,
     expanded: Boolean,
     showProtocol: Boolean,
     showIp: Boolean,
-    onToggleExpand: () -> Unit,
+    pingingIds: Set<String>,
+    onToggle: () -> Unit,
     onSelect: (ServerNode) -> Unit,
     onFavorite: (String) -> Unit,
     onRefresh: () -> Unit
 ) {
     val fmt = remember { SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()) }
-
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(GlassSurfaceHigh)
-            .border(1.dp, GlassBorder, RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(GlassSurfaceHigh.copy(alpha = 0.45f))
+            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onToggleExpand)
+                .clickable(onClick = onToggle)
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
+                Text(sub.name, color = GlassText, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text(
-                    sub.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = GlassText,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    "${nodes.size} серверов",
+                    color = GlassTextMuted,
+                    style = MaterialTheme.typography.labelMedium
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    buildString {
-                        append("${nodes.size} серверов")
-                        if (sub.totalBytes > 0) {
-                            val used = sub.uploadBytes + sub.downloadBytes
-                            append(" · ${formatTraffic(used)}/${formatTraffic(sub.totalBytes)}")
-                        }
-                        if (sub.expireAt > 0) {
-                            append(" · до ${fmt.format(Date(sub.expireAt * 1000))}")
-                        }
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = GlassTextMuted
-                )
-                if (sub.totalBytes > 0) {
-                    Spacer(Modifier.height(8.dp))
-                    val used = sub.uploadBytes + sub.downloadBytes
-                    val progress = (used.toFloat() / sub.totalBytes).coerceIn(0f, 1f)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(formatTraffic(used) + " / " + formatTraffic(sub.totalBytes), style = MaterialTheme.typography.labelSmall, color = GlassText)
-                        if (sub.expireAt > 0) {
-                            Text("до ${fmt.format(Date(sub.expireAt * 1000))}", style = MaterialTheme.typography.labelSmall, color = GlassAccent)
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(GlassBorder)
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth(progress)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(if (progress > 0.9f) GlassDanger else GlassPrimary)
-                        )
-                    }
-                }
                 if (sub.announce.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(sub.announce, style = MaterialTheme.typography.labelMedium, color = GlassAccent.copy(0.9f), maxLines = 3)
-                }
-                if (sub.autoUpdate) {
-                    Spacer(Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Update, null, tint = GlassAccent, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "Авто · ${sub.updateIntervalHours} ч",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GlassAccent
-                        )
-                    }
+                    Text(sub.announce, color = GlassAccent.copy(0.9f), style = MaterialTheme.typography.labelSmall, maxLines = 2)
                 }
             }
             IconButton(onClick = onRefresh) {
-                Icon(Icons.Outlined.Update, "Обновить", tint = GlassPrimarySoft)
+                Icon(Icons.Outlined.Update, null, tint = GlassPrimary, modifier = Modifier.size(20.dp))
             }
             Icon(
                 if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -239,28 +225,22 @@ private fun SubscriptionGroup(
                 tint = GlassTextMuted
             )
         }
-
         if (expanded) {
-            HorizontalDivider(color = GlassBorder)
-            if (nodes.isEmpty()) {
-                Text(
-                    "Нет серверов в этой подписке",
-                    Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = GlassTextMuted
-                )
-            } else {
-                nodes.forEachIndexed { index, server ->
+            HorizontalDivider(color = GlassBorder.copy(alpha = 0.5f))
+            // Cap visible rows cost: only compose nodes for expanded group
+            nodes.forEachIndexed { index, server ->
+                key(server.id) {
                     RegionRow(
                         server = server,
                         showProtocol = showProtocol,
                         showIp = showIp,
+                        isPinging = server.id in pingingIds,
                         onSelect = { onSelect(server) },
                         onFav = { onFavorite(server.id) }
                     )
                     if (index < nodes.lastIndex) {
                         HorizontalDivider(
-                            color = GlassBorder.copy(alpha = 0.5f),
+                            color = GlassBorder.copy(alpha = 0.4f),
                             modifier = Modifier.padding(start = 56.dp)
                         )
                     }
@@ -275,71 +255,76 @@ private fun RegionRow(
     server: ServerNode,
     showProtocol: Boolean,
     showIp: Boolean,
+    isPinging: Boolean,
     onSelect: () -> Unit,
     onFav: () -> Unit
 ) {
     val selected = server.isSelected
+    val dead = server.latencyMs != null && server.latencyMs < 0
+    val dim = if (dead) 0.45f else 1f
     Row(
         Modifier
             .fillMaxWidth()
-            .background(
-                if (selected) GlassPrimary.copy(0.12f)
-                else androidx.compose.ui.graphics.Color.Transparent
-            )
-            .clickable(onClick = onSelect)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .background(if (selected) GlassPrimary.copy(0.12f) else Color.Transparent)
+            .clickable(enabled = !dead, onClick = onSelect)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .alpha(dim),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(server.flag, fontSize = 22.sp)
+        Text(server.flag.ifBlank { "🌐" }, fontSize = 22.sp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 server.country.ifBlank { server.name },
                 style = MaterialTheme.typography.bodyLarge,
-                color = GlassText,
+                color = if (dead) GlassTextMuted else GlassText,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             if (showIp) {
                 val ipLine = when {
-                    server.exitIp.isNotBlank() -> "${server.flag} ${server.exitIp}"
-                    server.address.isNotBlank() && server.address.matches(Regex("""^\d{1,3}(\.\d{1,3}){3}$""")) ->
-                        "${server.flag} ${server.address}"
+                    server.exitIp.isNotBlank() -> server.exitIp
+                    server.address.isNotBlank() -> server.address
                     else -> null
                 }
                 if (ipLine != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        ipLine,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (server.exitIp.isNotBlank()) GlassAccent else GlassTextMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Text(ipLine, style = MaterialTheme.typography.labelSmall, color = GlassTextMuted, maxLines = 1)
                 }
             }
-            Spacer(Modifier.height(3.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (showProtocol) {
-                    ProtocolBadge(server.protocol)
-                    Spacer(Modifier.width(8.dp))
-                }
-                LatencyText(server.latencyMs)
+            if (showProtocol) {
+                Spacer(Modifier.height(4.dp))
+                ProtocolBadge(server.protocol)
             }
         }
-        IconButton(onClick = onFav) {
+        when {
+            isPinging -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = GlassPrimary
+                )
+            }
+            dead -> {
+                Text("не отвечает", style = MaterialTheme.typography.labelSmall, color = GlassDanger)
+            }
+            server.latencyMs != null -> {
+                val ms = server.latencyMs
+                val c = when {
+                    ms < 80 -> GlassAccent
+                    ms < 200 -> GlassWarning
+                    else -> GlassDanger
+                }
+                Text("${ms} ms", style = MaterialTheme.typography.labelMedium, color = c, fontWeight = FontWeight.Medium)
+            }
+        }
+        Spacer(Modifier.width(6.dp))
+        IconButton(onClick = onFav, modifier = Modifier.size(32.dp)) {
             Icon(
                 if (server.isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
                 null,
-                tint = if (server.isFavorite) GlassWarning else GlassTextMuted
+                tint = if (server.isFavorite) GlassWarning else GlassTextMuted,
+                modifier = Modifier.size(20.dp)
             )
         }
     }
-}
-
-
-private fun formatTraffic(b: Long): String = when {
-    b >= 1_073_741_824 -> "%.1fGB".format(b / 1_073_741_824.0)
-    b >= 1_048_576 -> "%.0fMB".format(b / 1_048_576.0)
-    else -> "$b"
 }

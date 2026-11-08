@@ -33,6 +33,7 @@ import java.util.UUID
 
 enum class ServerSort(val title: String) {
     AS_IN_SUB("Как в подписке"),
+    WORKING_FIRST("Сначала рабочие"),
     NAME_AZ("От А до Я"),
     NAME_ZA("От Я до А"),
     PING_ASC("От быстрых"),
@@ -129,6 +130,11 @@ class MainViewModel : ViewModel() {
         private set
     var showOnlyFavorites by mutableStateOf(false)
     var serverSort by mutableStateOf(ServerSort.AS_IN_SUB)
+    var showBuiltinServers by mutableStateOf(true)
+    /** Server ids currently being pinged (UI spinner). */
+    var pingingIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var reorderSubsMode by mutableStateOf(false)
         private set
     var autoUpdateOnLaunch by mutableStateOf(true)
         private set
@@ -180,6 +186,13 @@ class MainViewModel : ViewModel() {
             showServerProtocol = Prefs.loadShowServerProtocol(ctx)
             showServerIp = Prefs.loadShowServerIp(ctx)
             glassEffect = Prefs.loadGlassEffect(ctx)
+            showBuiltinServers = Prefs.loadShowBuiltin(ctx)
+            val order = Prefs.loadSubOrder(ctx)
+            if (order.isNotEmpty()) {
+                val map = subscriptions.associateBy { it.id }
+                val ordered = order.mapNotNull { map[it] } + subscriptions.filter { it.id !in order.toSet() }
+                subscriptions = ordered
+            }
             com.vpegs.ms.worker.SubUpdateWorker.schedule(ctx, bgUpdateHours, bgUpdateEnabled)
             try {
                 themeId = com.vpegs.ms.ui.theme.AppThemeId.valueOf(Prefs.loadThemeId(ctx))
@@ -468,15 +481,18 @@ class MainViewModel : ViewModel() {
         }
         isScanningBest = true
         bestScanProgress = 0f
-        bestScanStatus = "1/4 Подготовка списка…"
+        pingingIds = servers.map { it.id }.toSet()
+                    bestScanStatus = "1/4 Подготовка списка…"
         workStatus = bestScanStatus
         workProgress = 0f
         viewModelScope.launch {
             try {
                 val list = servers.toList()
                 val total = list.size.coerceAtLeast(1)
-                bestScanStatus = "2/4 Проверка доступности ($total шт.)…"
+                pingingIds = servers.map { it.id }.toSet()
+                    bestScanStatus = "2/4 Проверка доступности ($total шт.)…"
                 workStatus = bestScanStatus
+                pingingIds = targets.map { it.id }.toSet()
                 bestScanProgress = 0.1f
                 workProgress = 0.1f
 
@@ -492,7 +508,8 @@ class MainViewModel : ViewModel() {
                                 kotlinx.coroutines.withContext(Dispatchers.Main) {
                                     bestScanProgress = 0.1f + 0.7f * (n.toFloat() / total)
                                     workProgress = bestScanProgress
-                                    bestScanStatus = "2/4 Проверка $n/$total · ${s.name.take(28)}"
+                                    pingingIds = servers.map { it.id }.toSet()
+                    bestScanStatus = "2/4 Проверка $n/$total · ${s.name.take(28)}"
                                     workStatus = bestScanStatus
                                 }
                                 s.id to ms
@@ -501,17 +518,19 @@ class MainViewModel : ViewModel() {
                     }.awaitAll()
                 }
 
-                bestScanStatus = "3/4 Отбор доступных…"
+                pingingIds = servers.map { it.id }.toSet()
+                    bestScanStatus = "3/4 Отбор доступных…"
                 workStatus = bestScanStatus
                 bestScanProgress = 0.85f
                 workProgress = 0.85f
 
+                pingingIds = emptySet()
                 val reachable = results.mapNotNull { (id, ms) ->
                     if (ms != null) id to ms else null
                 }.toMap()
 
                 servers = servers.map { s ->
-                    s.copy(latencyMs = reachable[s.id])
+                    s.copy(latencyMs = reachable[s.id] ?: -1)
                 }
                 selectedServer = servers.find { it.id == selectedServer?.id }
 
@@ -519,19 +538,22 @@ class MainViewModel : ViewModel() {
                     .filter { it.latencyMs != null }
                     .minByOrNull { it.latencyMs!! }
 
-                bestScanStatus = "4/4 Применение…"
+                pingingIds = servers.map { it.id }.toSet()
+                    bestScanStatus = "4/4 Применение…"
                 workStatus = bestScanStatus
                 bestScanProgress = 0.95f
                 workProgress = 0.95f
 
                 if (best == null) {
                     lastError = "Нет доступных серверов"
+                    pingingIds = servers.map { it.id }.toSet()
                     bestScanStatus = "Ни один сервер не ответил"
                     workStatus = bestScanStatus
                 } else {
                     selectServer(best)
                     lastPingMs = best.latencyMs
                     lastError = null
+                    pingingIds = servers.map { it.id }.toSet()
                     bestScanStatus = "Лучший: ${best.name} · ${best.latencyMs} ms"
                     workStatus = bestScanStatus
                     if (connState == ConnState.CONNECTED || VpEgsVpnService.isConnected) {
@@ -564,6 +586,7 @@ class MainViewModel : ViewModel() {
                 workProgress = 1f
             } finally {
                 isScanningBest = false
+                pingingIds = emptySet()
                 delay(1800)
                 bestScanStatus = ""
                 bestScanProgress = 0f
@@ -583,6 +606,7 @@ class MainViewModel : ViewModel() {
                 workStatus = "Проверка серверов…"
                 workProgress = 0.05f
             }
+            pingingIds = list.map { it.id }.toSet()
             val sem = Semaphore(8)
             val done = java.util.concurrent.atomic.AtomicInteger(0)
             val total = list.size
@@ -592,8 +616,9 @@ class MainViewModel : ViewModel() {
                         sem.withPermit {
                             val ms = tcpPing(s.address, s.port, 1500)
                             val n = done.incrementAndGet()
-                            if (!silent) {
-                                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                pingingIds = pingingIds - s.id
+                                if (!silent) {
                                     workProgress = n.toFloat() / total
                                     workStatus = "Пинг $n/$total · ${s.name.take(24)}"
                                 }
@@ -603,7 +628,8 @@ class MainViewModel : ViewModel() {
                     }
                 }.awaitAll().toMap()
             }
-            servers = servers.map { it.copy(latencyMs = avgs[it.id]) }
+            servers = servers.map { it.copy(latencyMs = avgs[it.id] ?: -1) }
+            pingingIds = emptySet()
             selectedServer = servers.find { it.id == selectedServer?.id }
             lastPingMs = selectedServer?.latencyMs
             subscriptions = subscriptions.map {
@@ -625,6 +651,28 @@ class MainViewModel : ViewModel() {
     fun updateSearch(q: String) { searchQuery = q }
     fun toggleFavoritesFilter() { showOnlyFavorites = !showOnlyFavorites }
     fun updateServerSort(s: ServerSort) { serverSort = s }
+
+    fun updateShowBuiltin(show: Boolean) {
+        showBuiltinServers = show
+        appContext?.let { Prefs.saveShowBuiltin(it, show) }
+    }
+
+    fun moveSubscription(from: Int, to: Int) {
+        if (from == to) return
+        val list = subscriptions.toMutableList()
+        if (from !in list.indices || to !in list.indices) return
+        val item = list.removeAt(from)
+        list.add(to, item)
+        subscriptions = list
+        appContext?.let { Prefs.saveSubOrder(it, list.map { s -> s.id }) }
+        persist()
+    }
+
+    fun reorderSubscription(id: String, direction: Int) {
+        val idx = subscriptions.indexOfFirst { it.id == id }
+        if (idx < 0) return
+        moveSubscription(idx, (idx + direction).coerceIn(0, subscriptions.lastIndex))
+    }
     fun updateAutoUpdateOnLaunch(v: Boolean) { autoUpdateOnLaunch = v; persist() }
     fun updateGlobalProxyMode(v: Boolean) { globalProxyMode = v; persist() }
     fun updateInvertAppProxy(v: Boolean) {
@@ -906,6 +954,9 @@ class MainViewModel : ViewModel() {
     /** Servers grouped by subscription for HAPP-like UI */
     fun serversBySubscription(): List<Pair<Subscription, List<ServerNode>>> {
         var list = servers
+        if (!showBuiltinServers) {
+            list = list.filter { it.subscriptionId != BuiltInConfigSources.SUB_ID }
+        }
         if (showOnlyFavorites) list = list.filter { it.isFavorite }
         if (searchQuery.isNotBlank()) {
             val q = searchQuery.lowercase()
@@ -915,20 +966,36 @@ class MainViewModel : ViewModel() {
                 it.protocol.display.lowercase().contains(q)
             }
         }
-        return subscriptions.mapNotNull { sub ->
+        val subs = if (showBuiltinServers) subscriptions
+        else subscriptions.filter { it.id != BuiltInConfigSources.SUB_ID }
+        return subs.mapNotNull { sub ->
             val nodes = list.filter { it.subscriptionId == sub.id }
                 .let { nodes ->
                     when (serverSort) {
                         ServerSort.AS_IN_SUB -> nodes
+                        ServerSort.WORKING_FIRST -> nodes.sortedBy {
+                            when {
+                                it.latencyMs == null -> 1 // untested middle
+                                it.latencyMs!! < 0 -> 2 // dead last
+                                else -> 0 // working first
+                            }
+                        }
                         ServerSort.NAME_AZ -> nodes.sortedBy { it.name.lowercase() }
                         ServerSort.NAME_ZA -> nodes.sortedByDescending { it.name.lowercase() }
-                        ServerSort.PING_ASC -> nodes.sortedBy { it.latencyMs ?: 99999 }
+                        ServerSort.PING_ASC -> nodes.sortedBy { lat ->
+                            val v = lat.latencyMs
+                            when {
+                                v == null -> 99998
+                                v < 0 -> 99999
+                                else -> v
+                            }
+                        }
                         ServerSort.PING_DESC -> nodes.sortedByDescending { it.latencyMs ?: -1 }
                     }
                 }
             if (nodes.isEmpty() && searchQuery.isNotBlank()) null
             else sub to nodes
-        }.filter { (_, nodes) -> nodes.isNotEmpty() || searchQuery.isBlank() }
+        }
     }
     fun toggleSubAutoUpdate(id: String) {
         subscriptions = subscriptions.map { if (it.id == id) it.copy(autoUpdate = !it.autoUpdate) else it }

@@ -102,7 +102,7 @@ object Prefs {
                         country = o.optString("country"),
                         flag = o.optString("flag", "🌐"),
                         protocol = proto,
-                        latencyMs = if (lat < 0) null else lat,
+                        latencyMs = if (!o.has("latencyMs")) null else if (lat < 0) -1 else lat,
                         isFavorite = o.optBoolean("isFavorite", false),
                         isSelected = o.optBoolean("isSelected", false),
                         address = o.optString("address"),
@@ -207,4 +207,17 @@ object Prefs {
         sp(ctx).edit().putBoolean("glass_effect", enabled).apply()
     }
     fun loadGlassEffect(ctx: Context): Boolean = sp(ctx).getBoolean("glass_effect", true)
+
+    fun saveSubOrder(ctx: Context, ids: List<String>) {
+        sp(ctx).edit().putString("sub_order", ids.joinToString("|")).apply()
+    }
+    fun loadSubOrder(ctx: Context): List<String> {
+        val s = sp(ctx).getString("sub_order", "") ?: ""
+        return if (s.isBlank()) emptyList() else s.split("|").filter { it.isNotBlank() }
+    }
+    fun saveShowBuiltin(ctx: Context, show: Boolean) {
+        sp(ctx).edit().putBoolean("show_builtin", show).apply()
+    }
+    fun loadShowBuiltin(ctx: Context): Boolean = sp(ctx).getBoolean("show_builtin", true)
 }
+
