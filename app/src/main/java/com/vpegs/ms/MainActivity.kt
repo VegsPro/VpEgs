@@ -23,7 +23,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -114,16 +113,7 @@ fun VpEgsApp(vm: MainViewModel) {
                 Modifier
                     .fillMaxSize()
                     .then(if (glassOn) Modifier.hazeSource(state = hazeState) else Modifier)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF030712),
-                                GlassBg,
-                                Color(0xFF0A1628),
-                                Color(0xFF020617),
-                            )
-                        )
-                    )
+                    .background(GlassBg)
             ) {
                 NavHost(
                     navController = nav,
