@@ -81,14 +81,15 @@ fun HomeScreen(vm: MainViewModel) {
                         Spacer(Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ActionChip(
-                                "Обновить",
+                                label = "Обновить",
                                 loading = vm.updateDownloading || !vm.updateDownloaded,
-                                accent = true
-                            ) {
-                                if (vm.updateDownloaded) {
-                                    activity?.let { vm.installUpdate(it) }
+                                accent = true,
+                                onClick = {
+                                    if (vm.updateDownloaded) {
+                                        activity?.let { vm.installUpdate(it) }
+                                    }
                                 }
-                            }
+                            )
                         }
                     }
                     IconButton(onClick = { vm.dismissUpdateBanner(ctx) }) {
@@ -211,8 +212,8 @@ fun HomeScreen(vm: MainViewModel) {
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            ActionChip("Пинг", vm.isPinging) { vm.pingCurrent() }
-            ActionChip("Обновить", false) { vm.refreshCurrentServer() }
+            ActionChip(label = "Пинг", loading = vm.isPinging, onClick = { vm.pingCurrent() })
+            ActionChip(label = "Обновить", loading = false, onClick = { vm.refreshCurrentServer() })
             ActionChip(
                 "Лучший",
                 vm.isScanningBest,
@@ -264,4 +265,72 @@ private fun formatHomeTraffic(b: Long): String = when {
     b >= 1_073_741_824 -> "%.1f GB".format(b / 1_073_741_824.0)
     b >= 1_048_576 -> "%.0f MB".format(b / 1_048_576.0)
     else -> "$b B"
+}
+
+@Composable
+private fun BestSettingsDialog(vm: MainViewModel) {
+    var allowRu by remember { mutableStateOf(vm.bestAllowRu) }
+    var allSubs by remember { mutableStateOf(vm.bestAllSubs) }
+    var selected by remember { mutableStateOf(vm.bestSubIds.toSet()) }
+    AlertDialog(
+        onDismissRequest = { vm.showBestSettings = false },
+        title = { Text("Настройки «Лучший»") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Использовать сервера в РФ", color = GlassText)
+                        Text(
+                            "Выкл — не брать серверы с признаками RU",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassTextMuted
+                        )
+                    }
+                    Switch(checked = allowRu, onCheckedChange = { allowRu = it })
+                }
+                HorizontalDivider(color = GlassBorder)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Сервера всех подписок", color = GlassText)
+                        Text(
+                            "Выкл — только отмеченные ниже",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassTextMuted
+                        )
+                    }
+                    Switch(checked = allSubs, onCheckedChange = { allSubs = it })
+                }
+                if (!allSubs) {
+                    Text("Подписки", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                    vm.subscriptions.forEach { sub ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selected = if (sub.id in selected) selected - sub.id else selected + sub.id
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = sub.id in selected,
+                                onCheckedChange = {
+                                    selected = if (it) selected + sub.id else selected - sub.id
+                                }
+                            )
+                            Text(sub.name, color = GlassText, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { vm.saveBestSettings(allowRu, allSubs, selected) }) {
+                Text("Сохранить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { vm.showBestSettings = false }) { Text("Отмена") }
+        }
+    )
 }
