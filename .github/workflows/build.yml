@@ -36,15 +36,19 @@ jobs:
             echo "failed $dest"; return 1
           }
           V2="https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar"
-          HV="https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar"
+          if [ -f app/libs/hev-socks5-tunnel.aar ] && unzip -t app/libs/hev-socks5-tunnel.aar >/dev/null 2>&1; then
+            echo "using committed hev-socks5-tunnel.aar"
+          else
+            HV="https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar"
+            download app/libs/hev-socks5-tunnel.aar \
+              "$HV" \
+              "https://ghproxy.net/$HV" \
+              "https://mirror.ghproxy.com/$HV"
+          fi
           download app/libs/libv2ray.aar \
             "$V2" \
             "https://ghproxy.net/$V2" \
             "https://mirror.ghproxy.com/$V2"
-          download app/libs/hev-socks5-tunnel.aar \
-            "$HV" \
-            "https://ghproxy.net/$HV" \
-            "https://mirror.ghproxy.com/$HV"
           ls -lh app/libs/
       - name: Bump versionCode to run number
         run: |
