@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vpegs.ms.core.BuiltInConfigSources
 import com.vpegs.ms.data.Subscription
 import com.vpegs.ms.ui.components.GlassCard
 import com.vpegs.ms.ui.components.GlassProgressBar
@@ -49,11 +50,17 @@ fun SubscriptionsScreen(vm: MainViewModel) {
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 120.dp)) {
             items(vm.subscriptions, key = { it.id }) { sub ->
+                val builtin = sub.id == BuiltInConfigSources.SUB_ID
                 SubCard(
                     sub = sub,
+                    builtin = builtin,
                     onToggle = { vm.toggleSubAutoUpdate(sub.id) },
                     onDelete = { vm.removeSubscription(sub.id) },
-                    onEdit = { editSub = sub }
+                    onEdit = { if (!builtin) editSub = sub },
+                    onRefresh = {
+                        if (builtin) vm.refreshBuiltInConfigs()
+                        else vm.refreshSubscription(sub.id)
+                    }
                 )
             }
         }
@@ -144,9 +151,11 @@ private fun EditSubDialog(
 @Composable
 private fun SubCard(
     sub: Subscription,
+    builtin: Boolean = false,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onRefresh: () -> Unit = {}
 ) {
     val fmt = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
     val used = sub.uploadBytes + sub.downloadBytes
@@ -155,14 +164,29 @@ private fun SubCard(
     GlassCard(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(sub.name, style = MaterialTheme.typography.titleMedium, color = GlassText, fontWeight = FontWeight.SemiBold)
-                Text("${sub.serversCount} серверов", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                Text(
+                    if (builtin) "⭐ ${sub.name}" else sub.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = GlassText,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    if (builtin) "${sub.serversCount} серверов · GitHub free"
+                    else "${sub.serversCount} серверов",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = GlassTextMuted
+                )
             }
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, "Изменить", tint = GlassPrimary)
+            IconButton(onClick = onRefresh) {
+                Icon(Icons.Default.Refresh, "Обновить", tint = GlassPrimary)
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, "Удалить", tint = GlassDanger)
+            if (!builtin) {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, "Изменить", tint = GlassPrimary)
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, "Удалить", tint = GlassDanger)
+                }
             }
         }
 

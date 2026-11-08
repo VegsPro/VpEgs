@@ -14,6 +14,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vpegs.ms.BuildConfig
 import com.vpegs.ms.core.AppUpdater
+import com.vpegs.ms.core.BuiltInConfigSources
 import com.vpegs.ms.data.*
 import com.vpegs.ms.vpn.VpEgsVpnService
 import com.vpegs.ms.ui.tile.VpEgsTileService
@@ -194,6 +195,8 @@ class MainViewModel : ViewModel() {
                 connState = ConnState.CONNECTED
                 startStats()
             }
+            // Built-in free GitHub configs (once)
+            ensureBuiltInSubscription(fetch = subscriptions.none { it.id == BuiltInConfigSources.SUB_ID })
             // Background: GitHub update check + download
             checkForAppUpdate(ctx.applicationContext)
         } catch (e: Exception) {
@@ -877,11 +880,18 @@ class MainViewModel : ViewModel() {
     }
 
     fun refreshSubscription(id: String) {
+        if (id == BuiltInConfigSources.SUB_ID) {
+            refreshBuiltInConfigs()
+            return
+        }
         val sub = subscriptions.find { it.id == id } ?: return
         updateSubscription(id, sub.name, sub.url)
     }
 
     fun removeSubscription(id: String) {
+        if (id == BuiltInConfigSources.SUB_ID) {
+            // Built-in can be cleared of servers but entry stays optional — allow full remove
+        }
         val toRemove = servers.filter { it.subscriptionId == id }.map { it.id }
         toRemove.forEach { configByServerId.remove(it) }
         subscriptions = subscriptions.filter { it.id != id }
@@ -1011,6 +1021,100 @@ class MainViewModel : ViewModel() {
     }
 
     companion object { const val REQ_VPN = 1001 }
+
+
+    /** Create / refresh built-in VpEgs Config from public GitHub mirrors. */
+    fun ensureBuiltInSubscription(fetch: Boolean = true) {
+        if (subscriptions.none { it.id == BuiltInConfigSources.SUB_ID }) {
+            val sub = Subscription(
+                id = BuiltInConfigSources.SUB_ID,
+                name = BuiltInConfigSources.SUB_NAME,
+                url = BuiltInConfigSources.SUB_URL,
+                autoUpdate = true,
+                announce = "Публичные free-конфиги с GitHub (качество не гарантируется)"
+            )
+            subscriptions = listOf(sub) + subscriptions
+            persist()
+        }
+        if (fetch) refreshBuiltInConfigs()
+    }
+
+    fun refreshBuiltInConfigs() {
+        viewModelScope.launch {
+            workStatus = "Загрузка VpEgs Config…"
+            workProgress = 0.05f
+            try {
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val bodies = mutableListOf<String>()
+                val total = BuiltInConfigSources.urls.size
+                BuiltInConfigSources.urls.forEachIndexed { index, url ->
+                    workStatus = "Источник ${index + 1}/$total…"
+                    workProgress = (index + 1).toFloat() / (total + 1)
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val req = okhttp3.Request.Builder()
+                                .url(url)
+                                .header("User-Agent", "VpEgs/${BuildConfig.VERSION_NAME}")
+                                .build()
+                            client.newCall(req).execute().use { resp ->
+                                if (resp.isSuccessful) {
+                                    val body = resp.body?.string().orEmpty()
+                                    if (body.isNotBlank()) bodies.add(body)
+                                }
+                            }
+                        }
+                    } catch (_: Exception) { /* skip dead source */ }
+                }
+                workStatus = "Разбор серверов…"
+                workProgress = 0.9f
+                val merged = StringBuilder()
+                bodies.forEach { b ->
+                    merged.append(b.trim()).append('\n')
+                }
+                val parsed = com.vpegs.ms.core.LinkParser
+                    .parseSubscriptionBody(merged.toString(), BuiltInConfigSources.SUB_ID, BuiltInConfigSources.SUB_NAME)
+                // Deduplicate by address:port + protocol
+                val seen = HashSet<String>()
+                val unique = parsed.filter { item ->
+                    val key = "${item.node.protocol}|${item.node.address}|${item.node.port}|${item.node.name}"
+                    seen.add(key)
+                }.take(BuiltInConfigSources.MAX_SERVERS)
+
+                unique.forEach { configByServerId[it.node.id] = it.configJson }
+                val nodes = unique.map { it.node.copy(subscriptionId = BuiltInConfigSources.SUB_ID) }
+
+                // Replace only builtin servers
+                val oldIds = servers.filter { it.subscriptionId == BuiltInConfigSources.SUB_ID }.map { it.id }.toSet()
+                oldIds.forEach { configByServerId.remove(it) }
+                servers = servers.filter { it.subscriptionId != BuiltInConfigSources.SUB_ID } + nodes
+
+                subscriptions = subscriptions.map {
+                    if (it.id == BuiltInConfigSources.SUB_ID) it.copy(
+                        serversCount = nodes.size,
+                        lastUpdated = System.currentTimeMillis(),
+                        announce = "GitHub free · ${nodes.size} серверов · качество не гарантируется"
+                    ) else it
+                }
+                if (selectedServer == null && nodes.isNotEmpty()) {
+                    selectServer(nodes.first())
+                } else {
+                    persist()
+                }
+                workStatus = "VpEgs Config: ${nodes.size} серверов"
+                workProgress = 1f
+                delay(1200)
+                workStatus = ""
+                workProgress = 0f
+            } catch (e: Exception) {
+                e.printStackTrace()
+                workStatus = "Ошибка VpEgs Config: ${e.message?.take(40)}"
+                workProgress = 0f
+            }
+        }
+    }
 
     fun checkForAppUpdate(ctx: Context) {
         viewModelScope.launch {
