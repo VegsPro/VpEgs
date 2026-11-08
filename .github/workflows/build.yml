@@ -22,19 +22,29 @@ jobs:
       - name: Download native libs
         run: |
           mkdir -p app/libs
-          for i in 1 2 3 4 5; do
-            curl -fL --retry 3 -o app/libs/libv2ray.aar \
-              "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar" && break
-            sleep 5
-          done
-          for i in 1 2 3 4 5; do
-            curl -fL --retry 3 -o app/libs/hev-socks5-tunnel.aar \
-              "https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar" && break
-            sleep 5
-          done
-          # Validate AARs are zip archives
-          unzip -t app/libs/libv2ray.aar | tail -2
-          unzip -t app/libs/hev-socks5-tunnel.aar | tail -2
+          download() {
+            dest="$1"; shift
+            for url in "$@"; do
+              echo "try $url"
+              if curl -fL --retry 2 --retry-delay 3 --connect-timeout 30 -o "$dest" "$url"; then
+                if unzip -t "$dest" >/dev/null 2>&1; then
+                  echo "ok $dest"; return 0
+                fi
+              fi
+              rm -f "$dest"
+            done
+            echo "failed $dest"; return 1
+          }
+          V2="https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar"
+          HV="https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar"
+          download app/libs/libv2ray.aar \
+            "$V2" \
+            "https://ghproxy.net/$V2" \
+            "https://mirror.ghproxy.com/$V2"
+          download app/libs/hev-socks5-tunnel.aar \
+            "$HV" \
+            "https://ghproxy.net/$HV" \
+            "https://mirror.ghproxy.com/$HV"
           ls -lh app/libs/
       - name: Bump versionCode to run number
         run: |
