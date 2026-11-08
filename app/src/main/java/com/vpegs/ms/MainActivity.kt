@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material3.*
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +57,13 @@ class MainActivity : ComponentActivity() {
             val themeId = vm.themeId
             val palette = paletteFor(themeId)
             applyPalette(palette)
+            val view = LocalView.current
+            SideEffect {
+                val window = (view.context as android.app.Activity).window
+                window.statusBarColor = palette.bg.toArgb()
+                window.navigationBarColor = palette.bg.toArgb()
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = palette.isLight
+            }
 
             MaterialTheme(
                 colorScheme = if (palette.isLight) {
@@ -103,17 +111,17 @@ fun VpEgsApp(vm: MainViewModel) {
         LocalGlassEnabled provides glassOn,
         LocalHazeState provides hazeState
     ) {
+        // Full-screen theme bg under status bar (no gray strip)
         Box(
             Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .background(GlassBg)
         ) {
-            // Background + screens are the haze source (blur samples this layer)
             Box(
                 Modifier
                     .fillMaxSize()
+                    .statusBarsPadding()
                     .then(if (glassOn) Modifier.hazeSource(state = hazeState) else Modifier)
-                    .background(GlassBg)
             ) {
                 NavHost(
                     navController = nav,

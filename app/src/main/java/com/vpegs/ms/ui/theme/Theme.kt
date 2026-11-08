@@ -56,8 +56,9 @@ fun VpEgsTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = Color.Transparent.toArgb()
-            window.navigationBarColor = Color.Transparent.toArgb()
+            // Match app background so status bar is never gray/white
+            window.statusBarColor = palette.bg.toArgb()
+            window.navigationBarColor = palette.bg.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = palette.isLight
         }
     }
