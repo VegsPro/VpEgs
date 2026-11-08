@@ -41,9 +41,10 @@ data class ThemePalette(
 
 fun paletteFor(id: AppThemeId): ThemePalette = when (id) {
     AppThemeId.DARK_BLUE -> ThemePalette(
-        Color(0xFF020617), Color(0xCC0F172A), Color(0xE61E293B), Color(0x33FFFFFF),
-        Color(0xFF38BDF8), Color(0x3338BDF8), Color(0xFF22D3EE),
-        Color(0xFFF1F5F9), Color(0xFF94A3B8), false
+        // Classic VpEgs Black-Blue
+        Color(0xFF050B18), Color(0xCC0A1628), Color(0xE6122438), Color(0x40FFFFFF),
+        Color(0xFF38BDF8), Color(0x4038BDF8), Color(0xFF22D3EE),
+        Color(0xFFF8FAFC), Color(0xFF94A3B8), false
     )
     AppThemeId.DARK_PURPLE -> ThemePalette(
         Color(0xFF0B0614), Color(0xCC1A1028), Color(0xE62E1B45), Color(0x33FFFFFF),

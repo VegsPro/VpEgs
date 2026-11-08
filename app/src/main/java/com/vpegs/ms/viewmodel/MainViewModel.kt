@@ -84,6 +84,7 @@ class MainViewModel : ViewModel() {
     var updateDownloaded by mutableStateOf(false)
         private set
     var updateDownloading by mutableStateOf(false)
+    var updateChecking by mutableStateOf(false)
         private set
     var updateProgress by mutableStateOf(0f)
         private set
@@ -1234,55 +1235,65 @@ class MainViewModel : ViewModel() {
         }
     }
 
+
     fun checkForAppUpdate(ctx: Context) {
         viewModelScope.launch {
-            // Drop APKs for versions we already run
-            AppUpdater.deleteCached(ctx, BuildConfig.VERSION_CODE)
-            val remote = withContext(Dispatchers.IO) { AppUpdater.fetchLatest() } ?: return@launch
-            // Only if strictly newer than installed APK
-            if (!AppUpdater.isNewer(remote)) {
-                updateAvailable = false
-                showUpdateBanner = false
-                updateDownloaded = false
-                updateApkPath = null
-                workStatus = "Установлена актуальная версия"
-                kotlinx.coroutines.delay(1500)
-                workStatus = ""
-                return@launch
-            }
-            updateVersionCode = remote.versionCode
-            updateVersionName = remote.versionName
-            updateAvailable = true
+            updateChecking = true
+            workStatus = "Проверка обновлений…"
+            try {
+                AppUpdater.deleteCached(ctx, BuildConfig.VERSION_CODE)
+                val remote = withContext(Dispatchers.IO) { AppUpdater.fetchLatest() }
+                if (remote == null) {
+                    workStatus = "Не удалось проверить обновления"
+                    kotlinx.coroutines.delay(1800)
+                    workStatus = ""
+                    return@launch
+                }
+                if (!AppUpdater.isNewer(remote)) {
+                    updateAvailable = false
+                    showUpdateBanner = false
+                    updateDownloaded = false
+                    updateApkPath = null
+                    workStatus = "Установлена актуальная версия"
+                    kotlinx.coroutines.delay(1500)
+                    workStatus = ""
+                    return@launch
+                }
+                updateVersionCode = remote.versionCode
+                updateVersionName = remote.versionName
+                updateAvailable = true
 
-            if (AppUpdater.isDismissed(ctx, remote.versionCode) ||
-                !AppUpdater.canOfferInstall(ctx, remote.versionCode)
-            ) {
-                showUpdateBanner = false
-                // Settings button only if apk already cached
+                if (AppUpdater.isDismissed(ctx, remote.versionCode) ||
+                    !AppUpdater.canOfferInstall(ctx, remote.versionCode)
+                ) {
+                    showUpdateBanner = false
+                    if (AppUpdater.hasCachedApk(ctx, remote.versionCode)) {
+                        updateDownloaded = true
+                        updateApkPath = AppUpdater.apkFile(ctx, remote.versionCode).absolutePath
+                    }
+                    return@launch
+                }
+
+                showUpdateBanner = true
                 if (AppUpdater.hasCachedApk(ctx, remote.versionCode)) {
                     updateDownloaded = true
+                    updateDownloading = false
+                    updateProgress = 1f
                     updateApkPath = AppUpdater.apkFile(ctx, remote.versionCode).absolutePath
+                    return@launch
                 }
-                return@launch
-            }
-
-            showUpdateBanner = true
-            // Reuse cache — do not download the same version again
-            if (AppUpdater.hasCachedApk(ctx, remote.versionCode)) {
-                updateDownloaded = true
+                updateChecking = false
+                updateDownloading = true
+                updateProgress = 0f
+                val file = AppUpdater.download(ctx, remote) { p -> updateProgress = p }
                 updateDownloading = false
-                updateProgress = 1f
-                updateApkPath = AppUpdater.apkFile(ctx, remote.versionCode).absolutePath
-                return@launch
-            }
-            updateDownloading = true
-            updateProgress = 0f
-            val file = AppUpdater.download(ctx, remote) { p -> updateProgress = p }
-            updateDownloading = false
-            if (file != null) {
-                updateDownloaded = true
-                updateApkPath = file.absolutePath
-                updateProgress = 1f
+                if (file != null) {
+                    updateDownloaded = true
+                    updateApkPath = file.absolutePath
+                    updateProgress = 1f
+                }
+            } finally {
+                updateChecking = false
             }
         }
     }

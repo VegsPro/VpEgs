@@ -255,8 +255,15 @@ fun SettingsScreen(vm: MainViewModel) {
                         ) { Text("Установить") }
                         OutlinedButton(
                             onClick = { vm.checkForAppUpdate(ctx.applicationContext) },
+                            enabled = !vm.updateChecking,
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = GlassText)
-                        ) { Text("Проверить снова") }
+                        ) {
+                            if (vm.updateChecking) {
+                                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = GlassPrimary)
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text(if (vm.updateChecking) "Проверка…" else "Проверить снова")
+                        }
                     }
                 }
                 vm.updateAvailable -> {
@@ -276,9 +283,26 @@ fun SettingsScreen(vm: MainViewModel) {
                     Spacer(Modifier.height(10.dp))
                     Button(
                         onClick = { vm.checkForAppUpdate(ctx.applicationContext) },
+                        enabled = !vm.updateChecking,
                         colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
-                    ) { Text("Проверить обновление") }
-                    if (vm.workStatus.contains("актуальн", ignoreCase = true)) {
+                    ) {
+                        if (vm.updateChecking) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = GlassText
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text("Проверка…")
+                        } else {
+                            Text("Проверить обновление")
+                        }
+                    }
+                    if (vm.workStatus.isNotBlank() &&
+                        (vm.workStatus.contains("актуальн", ignoreCase = true) ||
+                            vm.workStatus.contains("обновлен", ignoreCase = true) ||
+                            vm.workStatus.contains("Не удалось", ignoreCase = true))
+                    ) {
                         Spacer(Modifier.height(6.dp))
                         Text(vm.workStatus, style = MaterialTheme.typography.labelMedium, color = GlassAccent)
                     }
