@@ -15,7 +15,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
@@ -40,24 +43,21 @@ jobs:
             echo "using committed hev-socks5-tunnel.aar"
           else
             HV="https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar"
-            download app/libs/hev-socks5-tunnel.aar \
-              "$HV" \
-              "https://ghproxy.net/$HV" \
-              "https://mirror.ghproxy.com/$HV"
+            download app/libs/hev-socks5-tunnel.aar "$HV" "https://ghproxy.net/$HV"
           fi
-          download app/libs/libv2ray.aar \
-            "$V2" \
-            "https://ghproxy.net/$V2" \
-            "https://mirror.ghproxy.com/$V2"
+          if [ -f app/libs/libv2ray.aar ] && unzip -t app/libs/libv2ray.aar >/dev/null 2>&1; then
+            echo "using existing libv2ray.aar"
+          else
+            download app/libs/libv2ray.aar "$V2" "https://ghproxy.net/$V2" "https://mirror.ghproxy.com/$V2"
+          fi
           ls -lh app/libs/
       - name: Bump versionCode to run number
         run: |
           sed -i "s/versionCode = .*/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
           sed -i 's/versionName = .*/versionName = "1.9.${{ github.run_number }}"/' app/build.gradle.kts
           grep -E "versionCode|versionName" app/build.gradle.kts
-      - run: chmod +x ./gradlew
       - name: Assemble debug APK
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
+        run: gradle assembleDebug --stacktrace --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: VpEgs-APK
