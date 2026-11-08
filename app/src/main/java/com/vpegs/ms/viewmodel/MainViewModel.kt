@@ -135,8 +135,6 @@ class MainViewModel : ViewModel() {
     var pingingIds by mutableStateOf<Set<String>>(emptySet())
         private set
     var reorderSubsMode by mutableStateOf(false)
-        // public for Servers UI
-        private set
     var autoUpdateOnLaunch by mutableStateOf(true)
         private set
     var globalProxyMode by mutableStateOf(true)
