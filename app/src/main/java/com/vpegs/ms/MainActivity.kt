@@ -107,23 +107,23 @@ fun VpEgsApp(vm: MainViewModel) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF030712),
-                            GlassBg,
-                            Color(0xFF0A1628),
-                            Color(0xFF020617),
-                        )
-                    )
-                )
                 .statusBarsPadding()
         ) {
-            // Full-screen content under the tab (tab blurs scrolling content)
+            // Background + screens are the haze source (blur samples this layer)
             Box(
                 Modifier
                     .fillMaxSize()
                     .then(if (glassOn) Modifier.hazeSource(state = hazeState) else Modifier)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF030712),
+                                GlassBg,
+                                Color(0xFF0A1628),
+                                Color(0xFF020617),
+                            )
+                        )
+                    )
             ) {
                 NavHost(
                     navController = nav,
@@ -182,12 +182,13 @@ private fun GlassBottomBar(
 ) {
     val shape = RoundedCornerShape(32.dp)
     val barStyle = HazeStyle(
-        backgroundColor = GlassSurface.copy(alpha = 0.5f),
+        backgroundColor = Color(0xFF0B1220).copy(alpha = 0.55f),
         tints = listOf(
-            HazeTint(Color.White.copy(alpha = 0.14f)),
-            HazeTint(GlassPrimary.copy(alpha = 0.08f)),
+            HazeTint(Color.White.copy(alpha = 0.18f)),
+            HazeTint(GlassPrimary.copy(alpha = 0.12f)),
+            HazeTint(Color(0xFF020617).copy(alpha = 0.25f)),
         ),
-        blurRadius = 32.dp,
+        blurRadius = 48.dp,
     )
 
     val barMod = modifier
@@ -196,9 +197,11 @@ private fun GlassBottomBar(
         .clip(shape)
         .then(
             if (glassOn) {
+                // Frosted underlay + real backdrop blur (SimpMusic-style)
                 Modifier
+                    .background(Color(0xCC0B1220), shape)
                     .hazeEffect(state = hazeState, style = barStyle)
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), shape)
+                    .border(1.dp, Color.White.copy(alpha = 0.22f), shape)
             } else {
                 Modifier
                     .background(GlassSurface)

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Reorder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Update
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -167,8 +168,11 @@ fun ServersScreen(vm: MainViewModel) {
                         sub = item.sub,
                         count = item.count,
                         expanded = item.expanded,
+                        isPinging = vm.pingingIds.isNotEmpty() &&
+                            vm.servers.any { it.subscriptionId == item.sub.id && it.id in vm.pingingIds },
                         onToggle = { vm.toggleSubExpanded(item.sub.id) },
-                        onRefresh = { vm.refreshSubscription(item.sub.id) }
+                        onRefresh = { vm.refreshSubscription(item.sub.id) },
+                        onPing = { vm.pingSubscriptionServers(item.sub.id) }
                     )
                     is ServerListItem.Row -> RegionRow(
                         server = item.server,
@@ -258,8 +262,10 @@ private fun SubHeader(
     sub: Subscription,
     count: Int,
     expanded: Boolean,
+    isPinging: Boolean = false,
     onToggle: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onPing: () -> Unit = {}
 ) {
     Row(
         Modifier
@@ -279,8 +285,19 @@ private fun SubHeader(
                 Text(sub.announce, color = GlassAccent.copy(0.9f), style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }
         }
+        IconButton(onClick = onPing, enabled = !isPinging) {
+            if (isPinging) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = GlassAccent
+                )
+            } else {
+                Icon(Icons.Outlined.Speed, "Пинг", tint = GlassAccent, modifier = Modifier.size(20.dp))
+            }
+        }
         IconButton(onClick = onRefresh) {
-            Icon(Icons.Outlined.Update, null, tint = GlassPrimary, modifier = Modifier.size(20.dp))
+            Icon(Icons.Outlined.Update, "Обновить", tint = GlassPrimary, modifier = Modifier.size(20.dp))
         }
         Icon(
             if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,

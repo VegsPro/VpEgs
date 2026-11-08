@@ -674,7 +674,51 @@ class MainViewModel : ViewModel() {
 
     fun updateSearch(q: String) { searchQuery = q }
     fun toggleFavoritesFilter() { showOnlyFavorites = !showOnlyFavorites }
-    fun updateServerSort(s: ServerSort) { serverSort = s }
+    
+    /** Ping all servers of one subscription (or all if subId blank). */
+    fun pingSubscriptionServers(subId: String = "") {
+        viewModelScope.launch {
+            val list = if (subId.isBlank()) servers.toList()
+            else servers.filter { it.subscriptionId == subId }
+            if (list.isEmpty()) return@launch
+            workStatus = "Пинг серверов…"
+            workProgress = 0.05f
+            pingingIds = list.map { it.id }.toSet()
+            val sem = Semaphore(8)
+            val done = java.util.concurrent.atomic.AtomicInteger(0)
+            val total = list.size
+            val avgs = coroutineScope {
+                list.map { s ->
+                    async(Dispatchers.IO) {
+                        sem.withPermit {
+                            val ms = tcpPing(s.address, s.port, 1500)
+                            val n = done.incrementAndGet()
+                            withContext(Dispatchers.Main) {
+                                pingingIds = pingingIds - s.id
+                                workProgress = n.toFloat() / total
+                                workStatus = "Пинг $n/$total · ${s.name.take(24)}"
+                            }
+                            s.id to ms
+                        }
+                    }
+                }.awaitAll().toMap()
+            }
+            servers = servers.map { s ->
+                if (s.id in avgs) s.copy(latencyMs = avgs[s.id] ?: -1) else s
+            }
+            selectedServer = servers.find { it.id == selectedServer?.id }
+            lastPingMs = selectedServer?.latencyMs
+            pingingIds = emptySet()
+            workStatus = "Пинг готов"
+            workProgress = 1f
+            kotlinx.coroutines.delay(900)
+            workStatus = ""
+            workProgress = 0f
+            persist()
+        }
+    }
+
+fun updateServerSort(s: ServerSort) { serverSort = s }
 
     fun toggleSubExpanded(id: String) {
         expandedSubIds = if (id in expandedSubIds) expandedSubIds - id else expandedSubIds + id
