@@ -15,15 +15,35 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - name: Install Gradle 8.9 (services.gradle.org)
+        run: |
+          set -e
+          cd /tmp
+          for url in \
+            "https://services.gradle.org/distributions/gradle-8.9-bin.zip" \
+            "https://downloads.gradle.org/distributions/gradle-8.9-bin.zip" \
+            "https://mirrors.cloud.tencent.com/gradle/gradle-8.9-bin.zip" \
+            "https://mirrors.huaweicloud.com/gradle/gradle-8.9-bin.zip"
+          do
+            echo "try $url"
+            if curl -fL --retry 3 --retry-delay 4 --connect-timeout 40 -o gradle-8.9-bin.zip "$url"; then
+              if unzip -t gradle-8.9-bin.zip >/dev/null 2>&1; then
+                echo "downloaded ok from $url"
+                break
+              fi
+            fi
+            rm -f gradle-8.9-bin.zip
+          done
+          test -f gradle-8.9-bin.zip
+          unzip -q gradle-8.9-bin.zip
+          echo "/tmp/gradle-8.9/bin" >> "$GITHUB_PATH"
+          /tmp/gradle-8.9/bin/gradle -v
       - name: Download native libs
         run: |
+          set -e
           mkdir -p app/libs
           download() {
             dest="$1"; shift
@@ -36,20 +56,16 @@ jobs:
               fi
               rm -f "$dest"
             done
-            echo "failed $dest"; return 1
+            return 1
           }
-          V2="https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar"
           if [ -f app/libs/hev-socks5-tunnel.aar ] && unzip -t app/libs/hev-socks5-tunnel.aar >/dev/null 2>&1; then
             echo "using committed hev-socks5-tunnel.aar"
           else
             HV="https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar"
             download app/libs/hev-socks5-tunnel.aar "$HV" "https://ghproxy.net/$HV"
           fi
-          if [ -f app/libs/libv2ray.aar ] && unzip -t app/libs/libv2ray.aar >/dev/null 2>&1; then
-            echo "using existing libv2ray.aar"
-          else
-            download app/libs/libv2ray.aar "$V2" "https://ghproxy.net/$V2" "https://mirror.ghproxy.com/$V2"
-          fi
+          V2="https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar"
+          download app/libs/libv2ray.aar "$V2" "https://ghproxy.net/$V2" "https://mirror.ghproxy.com/$V2"
           ls -lh app/libs/
       - name: Bump versionCode to run number
         run: |
