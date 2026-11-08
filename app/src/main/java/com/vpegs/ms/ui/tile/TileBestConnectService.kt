@@ -16,6 +16,8 @@ import com.vpegs.ms.data.Prefs
 import com.vpegs.ms.data.ServerNode
 import com.vpegs.ms.vpn.VpEgsVpnService
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicInteger
@@ -135,19 +137,22 @@ class TileBestConnectService : Service() {
         if (servers.isEmpty()) return null
 
         val maxPing = Prefs.loadTileMaxPingMs(this)
-        val sem = kotlinx.coroutines.sync.Semaphore(8)
         val results = mutableListOf<Pair<ServerNode, Int>>()
         runBlocking {
-            val jobs = servers.map { s ->
-                async(Dispatchers.IO) {
-                    sem.withPermit {
-                        val ms = tcpPing(s.address, s.port, 1600) ?: return@withPermit
-                        if (maxPing > 0 && ms > maxPing) return@withPermit
-                        synchronized(results) { results.add(s to ms) }
+            val sem = Semaphore(8)
+            coroutineScope {
+                servers.map { s ->
+                    async(Dispatchers.IO) {
+                        sem.withPermit {
+                            val ms = tcpPing(s.address, s.port, 1600) ?: return@withPermit null
+                            if (maxPing > 0 && ms > maxPing) return@withPermit null
+                            s to ms
+                        }
                     }
+                }.awaitAll().forEach { pair ->
+                    if (pair != null) results.add(pair)
                 }
             }
-            jobs.awaitAll()
         }
         val best = results.minByOrNull { it.second }?.first ?: return null
         val cfg = configs[best.id] ?: best.rawConfig
