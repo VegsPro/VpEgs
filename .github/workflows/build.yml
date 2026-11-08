@@ -15,44 +15,27 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
       - name: Download native libs
         run: |
           mkdir -p app/libs
-          curl -L -o app/libs/libv2ray.aar \
+          curl -L --retry 5 -o app/libs/libv2ray.aar \
             "https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar"
-          curl -L -o app/libs/hev-socks5-tunnel.aar \
+          curl -L --retry 5 -o app/libs/hev-socks5-tunnel.aar \
             "https://github.com/heiher/hev-socks5-tunnel/releases/download/2.19.3/hev-socks5-tunnel.aar"
           ls -lh app/libs/
       - name: Bump versionCode to run number
         run: |
           sed -i "s/versionCode = .*/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
-          sed -i 's/versionName = .*/versionName = "1.8.${{ github.run_number }}"/' app/build.gradle.kts
+          sed -i 's/versionName = .*/versionName = "1.9.${{ github.run_number }}"/' app/build.gradle.kts
           grep -E "versionCode|versionName" app/build.gradle.kts
-      - name: Prefetch Gradle distribution
-        run: |
-          mkdir -p "$HOME/.gradle/wrapper/dists"
-          curl -fsSL --retry 5 --retry-delay 5 -o /tmp/gradle-8.10.2-bin.zip             "https://services.gradle.org/distributions/gradle-8.10.2-bin.zip"             || curl -fsSL --retry 5 -o /tmp/gradle-8.10.2-bin.zip             "https://downloads.gradle.org/distributions/gradle-8.10.2-bin.zip"
-          # Let wrapper place it; just verify zip
-          unzip -t /tmp/gradle-8.10.2-bin.zip | tail -3
-          # Seed wrapper cache path (hash folder created by wrapper)
-          GRADLE_USER_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
-          # Use wrapper with offline-ish help by setting distribution path via env
-          export GRADLE_OPTS="-Dorg.gradle.internal.http.connectionTimeout=120000 -Dorg.gradle.internal.http.socketTimeout=120000"
-          # Install into standard location manually after first wrapper run fails? 
-          # Simpler: put zip where wrapper expects after computing hash — skip; use gradle directly from unzip
-          rm -rf /tmp/gradle-8.10.2
-          unzip -q /tmp/gradle-8.10.2-bin.zip -d /tmp
-          echo "GRADLE_HOME=/tmp/gradle-8.10.2" >> $GITHUB_ENV
-          echo "/tmp/gradle-8.10.2/bin" >> $GITHUB_PATH
-          /tmp/gradle-8.10.2/bin/gradle -v
-      - run: chmod +x ./gradlew
       - name: Assemble debug APK
-        run: |
-          # Prefer prefetched Gradle to avoid flaky GitHub dist mirror
-          /tmp/gradle-8.10.2/bin/gradle assembleDebug --stacktrace --no-daemon
+        run: gradle assembleDebug --stacktrace --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: VpEgs-APK
@@ -66,7 +49,7 @@ jobs:
           name: VpEgs v${{ github.run_number }}
           body: |
             versionCode=${{ github.run_number }}
-            versionName=1.8.${{ github.run_number }}
+            versionName=1.9.${{ github.run_number }}
           files: app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
