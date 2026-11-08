@@ -135,6 +135,14 @@ class MainViewModel : ViewModel() {
     var pingingIds by mutableStateOf<Set<String>>(emptySet())
         private set
     var reorderSubsMode by mutableStateOf(false)
+    var expandedSubIds by mutableStateOf<Set<String>>(emptySet())
+    var bestAllowRu by mutableStateOf(true)
+    var bestAllSubs by mutableStateOf(true)
+    var bestSubIds by mutableStateOf<Set<String>>(emptySet())
+    var showBestSettings by mutableStateOf(false)
+    /** Cached grouping for Servers tab — invalidated on data change */
+    private var groupsCacheKey: String = ""
+    private var groupsCache: List<Pair<Subscription, List<ServerNode>>> = emptyList()
     var autoUpdateOnLaunch by mutableStateOf(true)
         private set
     var globalProxyMode by mutableStateOf(true)
@@ -186,6 +194,10 @@ class MainViewModel : ViewModel() {
             showServerIp = Prefs.loadShowServerIp(ctx)
             glassEffect = Prefs.loadGlassEffect(ctx)
             showBuiltinServers = Prefs.loadShowBuiltin(ctx)
+            expandedSubIds = Prefs.loadExpandedSubs(ctx)
+            bestAllowRu = Prefs.loadBestAllowRu(ctx)
+            bestAllSubs = Prefs.loadBestAllSubs(ctx)
+            bestSubIds = Prefs.loadBestSubIds(ctx)
             val order = Prefs.loadSubOrder(ctx)
             if (order.isNotEmpty()) {
                 val map = subscriptions.associateBy { it.id }
@@ -472,6 +484,28 @@ class MainViewModel : ViewModel() {
      * Stages shown in [bestScanStatus]. Only reachable servers compete;
      * winner = lowest RTT. Parallelism limited to 8 to avoid lag.
      */
+    private fun looksRussian(s: ServerNode): Boolean {
+        val n = (s.name + " " + s.country + " " + s.flag).lowercase()
+        if ("🇷🇺" in s.flag || "🇷🇺" in s.name) return true
+        if (n.contains("russia") || n.contains("россия") || n.contains("moscow") || n.contains("москва")) return true
+        if (Regex("""\bRU[-_\s]""", RegexOption.IGNORE_CASE).containsMatchIn(n)) return true
+        // Common RU IP prefixes (rough)
+        val ip = s.address
+        if (ip.startsWith("5.") || ip.startsWith("31.") || ip.startsWith("37.") ||
+            ip.startsWith("46.") || ip.startsWith("77.") || ip.startsWith("78.") ||
+            ip.startsWith("79.") || ip.startsWith("85.") || ip.startsWith("89.") ||
+            ip.startsWith("90.") || ip.startsWith("91.") || ip.startsWith("92.") ||
+            ip.startsWith("93.") || ip.startsWith("94.") || ip.startsWith("95.") ||
+            ip.startsWith("176.") || ip.startsWith("178.") || ip.startsWith("185.") ||
+            ip.startsWith("188.") || ip.startsWith("193.") || ip.startsWith("194.") ||
+            ip.startsWith("195.") || ip.startsWith("212.") || ip.startsWith("213.")
+        ) {
+            // only if also name hints RU or flag empty
+            if ("ru" in n || s.flag.isBlank()) return true
+        }
+        return false
+    }
+
     fun selectBestServer(activity: android.app.Activity? = null) {
         if (isScanningBest) return
         if (servers.isEmpty()) {
@@ -485,7 +519,18 @@ class MainViewModel : ViewModel() {
         workProgress = 0f
         viewModelScope.launch {
             try {
-                val list = servers.toList()
+                var list = servers.toList()
+                if (!bestAllSubs && bestSubIds.isNotEmpty()) {
+                    list = list.filter { it.subscriptionId in bestSubIds }
+                }
+                if (!bestAllowRu) {
+                    list = list.filter { !looksRussian(it) }
+                }
+                if (list.isEmpty()) {
+                    bestScanStatus = "Нет серверов по фильтрам «Лучший»"
+                    workStatus = bestScanStatus
+                    return@launch
+                }
                 val total = list.size.coerceAtLeast(1)
                 pingingIds = list.map { it.id }.toSet()
                 bestScanStatus = "2/4 Проверка доступности ($total шт.)…"
@@ -629,6 +674,19 @@ class MainViewModel : ViewModel() {
     fun updateSearch(q: String) { searchQuery = q }
     fun toggleFavoritesFilter() { showOnlyFavorites = !showOnlyFavorites }
     fun updateServerSort(s: ServerSort) { serverSort = s }
+
+    fun toggleSubExpanded(id: String) {
+        expandedSubIds = if (id in expandedSubIds) expandedSubIds - id else expandedSubIds + id
+        appContext?.let { Prefs.saveExpandedSubs(it, expandedSubIds) }
+    }
+
+    fun saveBestSettings(allowRu: Boolean, allSubs: Boolean, ids: Set<String>) {
+        bestAllowRu = allowRu
+        bestAllSubs = allSubs
+        bestSubIds = ids
+        appContext?.let { Prefs.saveBestSettings(it, allowRu, allSubs, ids) }
+        showBestSettings = false
+    }
 
     fun updateShowBuiltin(show: Boolean) {
         showBuiltinServers = show
@@ -931,6 +989,18 @@ class MainViewModel : ViewModel() {
 
     /** Servers grouped by subscription for HAPP-like UI */
     fun serversBySubscription(): List<Pair<Subscription, List<ServerNode>>> {
+        val key = buildString {
+            append(servers.size).append('|')
+            append(subscriptions.size).append('|')
+            append(serverSort.name).append('|')
+            append(showOnlyFavorites).append('|')
+            append(showBuiltinServers).append('|')
+            append(searchQuery).append('|')
+            append(servers.sumOf { (it.latencyMs ?: 0) + if (it.isFavorite) 1 else 0 })
+            append('|').append(subscriptions.joinToString { it.id })
+        }
+        if (key == groupsCacheKey && groupsCache.isNotEmpty()) return groupsCache
+
         var list = servers
         if (!showBuiltinServers) {
             list = list.filter { it.subscriptionId != BuiltInConfigSources.SUB_ID }
@@ -946,26 +1016,26 @@ class MainViewModel : ViewModel() {
         }
         val subs = if (showBuiltinServers) subscriptions
         else subscriptions.filter { it.id != BuiltInConfigSources.SUB_ID }
-        return subs.mapNotNull { sub ->
+        val result = subs.mapNotNull { sub ->
             val nodes = list.filter { it.subscriptionId == sub.id }
                 .let { nodes ->
                     when (serverSort) {
                         ServerSort.AS_IN_SUB -> nodes
                         ServerSort.WORKING_FIRST -> nodes.sortedBy {
                             when {
-                                it.latencyMs == null -> 1 // untested middle
-                                it.latencyMs!! < 0 -> 2 // dead last
-                                else -> 0 // working first
+                                it.latencyMs == null -> 1
+                                it.latencyMs!! < 0 -> 2
+                                else -> 0
                             }
                         }
                         ServerSort.NAME_AZ -> nodes.sortedBy { it.name.lowercase() }
                         ServerSort.NAME_ZA -> nodes.sortedByDescending { it.name.lowercase() }
                         ServerSort.PING_ASC -> nodes.sortedBy { lat ->
-                            val v = lat.latencyMs
+                            val x = lat.latencyMs
                             when {
-                                v == null -> 99998
-                                v < 0 -> 99999
-                                else -> v
+                                x == null -> 99998
+                                x < 0 -> 99999
+                                else -> x
                             }
                         }
                         ServerSort.PING_DESC -> nodes.sortedByDescending { it.latencyMs ?: -1 }
@@ -974,6 +1044,9 @@ class MainViewModel : ViewModel() {
             if (nodes.isEmpty() && searchQuery.isNotBlank()) null
             else sub to nodes
         }
+        groupsCacheKey = key
+        groupsCache = result
+        return result
     }
     fun toggleSubAutoUpdate(id: String) {
         subscriptions = subscriptions.map { if (it.id == id) it.copy(autoUpdate = !it.autoUpdate) else it }

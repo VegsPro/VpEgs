@@ -4,6 +4,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -155,15 +157,23 @@ fun GlassPowerButton(connected: Boolean, connecting: Boolean, onClick: () -> Uni
 }
 
 @Composable
-fun ActionChip(label: String, loading: Boolean = false, accent: Boolean = false, onClick: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+fun ActionChip(
+    label: String,
+    loading: Boolean = false,
+    accent: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
+) {
     val bg = if (accent) GlassPrimary.copy(0.2f) else GlassSurfaceHigh
     val border = if (accent) GlassPrimary.copy(0.5f) else GlassBorder
     Surface(
-        onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         color = bg,
         border = androidx.compose.foundation.BorderStroke(1.dp, border),
-        modifier = Modifier.height(44.dp)
+        modifier = Modifier
+            .height(44.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = GlassPrimarySoft)

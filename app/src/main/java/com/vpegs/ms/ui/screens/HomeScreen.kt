@@ -2,6 +2,7 @@ package com.vpegs.ms.ui.screens
 
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -212,7 +213,17 @@ fun HomeScreen(vm: MainViewModel) {
         ) {
             ActionChip("Пинг", vm.isPinging) { vm.pingCurrent() }
             ActionChip("Обновить", false) { vm.refreshCurrentServer() }
-            ActionChip("Лучший", vm.isScanningBest, accent = true) { vm.selectBestServer(activity) }
+            ActionChip(
+                "Лучший",
+                vm.isScanningBest,
+                accent = true,
+                onClick = { vm.selectBestServer(activity) },
+                onLongClick = { vm.showBestSettings = true }
+            )
+        }
+
+        if (vm.showBestSettings) {
+            BestSettingsDialog(vm)
         }
 
         if (vm.workProgress > 0f || vm.workStatus.isNotBlank()) {

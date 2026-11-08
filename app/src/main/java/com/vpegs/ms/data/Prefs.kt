@@ -219,5 +219,28 @@ object Prefs {
         sp(ctx).edit().putBoolean("show_builtin", show).apply()
     }
     fun loadShowBuiltin(ctx: Context): Boolean = sp(ctx).getBoolean("show_builtin", true)
+
+    fun saveExpandedSubs(ctx: Context, ids: Set<String>) {
+        sp(ctx).edit().putString("expanded_subs", ids.joinToString("|")).apply()
+    }
+    fun loadExpandedSubs(ctx: Context): Set<String> {
+        val s = sp(ctx).getString("expanded_subs", null) ?: return emptySet()
+        return s.split("|").filter { it.isNotBlank() }.toSet()
+    }
+
+    fun saveBestSettings(ctx: Context, allowRu: Boolean, allSubs: Boolean, subIds: Set<String>) {
+        sp(ctx).edit()
+            .putBoolean("best_allow_ru", allowRu)
+            .putBoolean("best_all_subs", allSubs)
+            .putString("best_sub_ids", subIds.joinToString("|"))
+            .apply()
+    }
+    fun loadBestAllowRu(ctx: Context) = sp(ctx).getBoolean("best_allow_ru", true)
+    fun loadBestAllSubs(ctx: Context) = sp(ctx).getBoolean("best_all_subs", true)
+    fun loadBestSubIds(ctx: Context): Set<String> {
+        val s = sp(ctx).getString("best_sub_ids", "") ?: ""
+        return s.split("|").filter { it.isNotBlank() }.toSet()
+    }
 }
+
 

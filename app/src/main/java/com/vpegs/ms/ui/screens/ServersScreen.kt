@@ -3,16 +3,16 @@ package com.vpegs.ms.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Reorder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -25,10 +25,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.vpegs.ms.data.ServerNode
 import com.vpegs.ms.data.Subscription
 import com.vpegs.ms.ui.components.GlassProgressBar
@@ -36,17 +40,24 @@ import com.vpegs.ms.ui.components.ProtocolBadge
 import com.vpegs.ms.ui.theme.*
 import com.vpegs.ms.viewmodel.MainViewModel
 import com.vpegs.ms.viewmodel.ServerSort
-import java.text.SimpleDateFormat
-import java.util.*
+import kotlin.math.roundToInt
+
+private sealed class ServerListItem {
+    data class Header(val sub: Subscription, val count: Int, val expanded: Boolean) : ServerListItem()
+    data class Row(val server: ServerNode) : ServerListItem()
+}
 
 @Composable
 fun ServersScreen(vm: MainViewModel) {
-    // Cheap keys only — avoid recompute on every latency tick of unrelated fields
-    val groups by remember {
-        derivedStateOf { vm.serversBySubscription() }
-    }
-    // Collapse all by default for performance; expand on demand
-    var expandedIds by remember { mutableStateOf(setOf<String>()) }
+    val groups = remember(
+        vm.servers,
+        vm.subscriptions,
+        vm.serverSort,
+        vm.showOnlyFavorites,
+        vm.showBuiltinServers,
+        vm.searchQuery
+    ) { vm.serversBySubscription() }
+
     var sortMenu by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(top = 8.dp)) {
@@ -64,42 +75,12 @@ fun ServersScreen(vm: MainViewModel) {
 
         if (vm.reorderSubsMode) {
             Text(
-                "Порядок подписок — стрелки вверх/вниз",
+                "Зажмите ☰ и перетащите подписку",
                 style = MaterialTheme.typography.labelMedium,
                 color = GlassTextMuted
             )
             Spacer(Modifier.height(8.dp))
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 120.dp)
-            ) {
-                itemsIndexed(vm.subscriptions, key = { _, s -> s.id }) { index, sub ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(GlassSurfaceHigh.copy(alpha = 0.55f))
-                            .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("☰", color = GlassTextMuted, fontSize = 18.sp)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(sub.name, color = GlassText, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            Text("${sub.serversCount} серверов", color = GlassTextMuted, style = MaterialTheme.typography.labelSmall)
-                        }
-                        IconButton(
-                            onClick = { vm.reorderSubscription(sub.id, -1) },
-                            enabled = index > 0
-                        ) { Icon(Icons.Default.KeyboardArrowUp, null, tint = GlassPrimary) }
-                        IconButton(
-                            onClick = { vm.reorderSubscription(sub.id, 1) },
-                            enabled = index < vm.subscriptions.lastIndex
-                        ) { Icon(Icons.Default.KeyboardArrowDown, null, tint = GlassPrimary) }
-                    }
-                }
-            }
+            DragReorderSubsList(vm)
             return@Column
         }
 
@@ -149,104 +130,163 @@ fun ServersScreen(vm: MainViewModel) {
             Spacer(Modifier.height(6.dp))
             GlassProgressBar(vm.workProgress, label = vm.workStatus.ifBlank { null })
         }
-
         Spacer(Modifier.height(8.dp))
 
+        // Flat virtualized list: only visible headers/rows are composed
+        val flat = remember(groups, vm.expandedSubIds) {
+            buildList {
+                for ((sub, nodes) in groups) {
+                    val exp = sub.id in vm.expandedSubIds
+                    add(ServerListItem.Header(sub, nodes.size, exp))
+                    if (exp) nodes.forEach { add(ServerListItem.Row(it)) }
+                }
+            }
+        }
+
         LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
-            items(groups, key = { it.first.id }) { (sub, nodes) ->
-                val open = sub.id in expandedIds
-                SubGroupCard(
-                    sub = sub,
-                    nodes = nodes,
-                    expanded = open,
-                    showProtocol = vm.showServerProtocol,
-                    showIp = vm.showServerIp,
-                    pingingIds = vm.pingingIds,
-                    onToggle = {
-                        expandedIds = if (open) expandedIds - sub.id else expandedIds + sub.id
-                    },
-                    onSelect = { vm.selectServer(it) },
-                    onFavorite = { vm.toggleFavorite(it) },
-                    onRefresh = { vm.refreshSubscription(sub.id) }
-                )
+            items(
+                items = flat,
+                key = {
+                    when (it) {
+                        is ServerListItem.Header -> "h-${it.sub.id}"
+                        is ServerListItem.Row -> "s-${it.server.id}"
+                    }
+                },
+                contentType = {
+                    when (it) {
+                        is ServerListItem.Header -> "header"
+                        is ServerListItem.Row -> "row"
+                    }
+                }
+            ) { item ->
+                when (item) {
+                    is ServerListItem.Header -> SubHeader(
+                        sub = item.sub,
+                        count = item.count,
+                        expanded = item.expanded,
+                        onToggle = { vm.toggleSubExpanded(item.sub.id) },
+                        onRefresh = { vm.refreshSubscription(item.sub.id) }
+                    )
+                    is ServerListItem.Row -> RegionRow(
+                        server = item.server,
+                        showProtocol = vm.showServerProtocol,
+                        showIp = vm.showServerIp,
+                        isPinging = item.server.id in vm.pingingIds,
+                        onSelect = { vm.selectServer(item.server) },
+                        onFav = { vm.toggleFavorite(item.server.id) }
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SubGroupCard(
-    sub: Subscription,
-    nodes: List<ServerNode>,
-    expanded: Boolean,
-    showProtocol: Boolean,
-    showIp: Boolean,
-    pingingIds: Set<String>,
-    onToggle: () -> Unit,
-    onSelect: (ServerNode) -> Unit,
-    onFavorite: (String) -> Unit,
-    onRefresh: () -> Unit
-) {
-    val fmt = remember { SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()) }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(GlassSurfaceHigh.copy(alpha = 0.45f))
-            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+private fun DragReorderSubsList(vm: MainViewModel) {
+    val density = LocalDensity.current
+    var draggingId by remember { mutableStateOf<String?>(null) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    val itemHeightPx = with(density) { 64.dp.toPx() }
+    val list = vm.subscriptions
+
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(bottom = 120.dp)
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggle)
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(sub.name, color = GlassText, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        itemsIndexed(list, key = { _, s -> s.id }) { index, sub ->
+            val isDrag = draggingId == sub.id
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .zIndex(if (isDrag) 1f else 0f)
+                    .graphicsLayer {
+                        translationY = if (isDrag) dragOffsetY else 0f
+                        shadowElevation = if (isDrag) 12f else 0f
+                    }
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(GlassSurfaceHigh.copy(alpha = if (isDrag) 0.85f else 0.55f))
+                    .border(1.dp, if (isDrag) GlassPrimary else GlassBorder, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    "${nodes.size} серверов",
+                    "☰",
                     color = GlassTextMuted,
-                    style = MaterialTheme.typography.labelMedium
-                )
-                if (sub.announce.isNotBlank()) {
-                    Text(sub.announce, color = GlassAccent.copy(0.9f), style = MaterialTheme.typography.labelSmall, maxLines = 2)
-                }
-            }
-            IconButton(onClick = onRefresh) {
-                Icon(Icons.Outlined.Update, null, tint = GlassPrimary, modifier = Modifier.size(20.dp))
-            }
-            Icon(
-                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                null,
-                tint = GlassTextMuted
-            )
-        }
-        if (expanded) {
-            HorizontalDivider(color = GlassBorder.copy(alpha = 0.5f))
-            // Cap visible rows cost: only compose nodes for expanded group
-            nodes.forEachIndexed { index, server ->
-                key(server.id) {
-                    RegionRow(
-                        server = server,
-                        showProtocol = showProtocol,
-                        showIp = showIp,
-                        isPinging = server.id in pingingIds,
-                        onSelect = { onSelect(server) },
-                        onFav = { onFavorite(server.id) }
-                    )
-                    if (index < nodes.lastIndex) {
-                        HorizontalDivider(
-                            color = GlassBorder.copy(alpha = 0.4f),
-                            modifier = Modifier.padding(start = 56.dp)
+                    fontSize = 20.sp,
+                    modifier = Modifier.pointerInput(sub.id, index, list.size) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                draggingId = sub.id
+                                dragOffsetY = 0f
+                            },
+                            onDragEnd = {
+                                val from = list.indexOfFirst { it.id == draggingId }
+                                if (from >= 0) {
+                                    val delta = (dragOffsetY / itemHeightPx).roundToInt()
+                                    val to = (from + delta).coerceIn(0, list.lastIndex)
+                                    if (from != to) vm.moveSubscription(from, to)
+                                }
+                                draggingId = null
+                                dragOffsetY = 0f
+                            },
+                            onDragCancel = {
+                                draggingId = null
+                                dragOffsetY = 0f
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                dragOffsetY += dragAmount.y
+                            }
                         )
                     }
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(sub.name, color = GlassText, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text("${sub.serversCount} серверов", color = GlassTextMuted, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SubHeader(
+    sub: Subscription,
+    count: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onRefresh: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(GlassSurfaceHigh.copy(alpha = 0.5f))
+            .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(sub.name, color = GlassText, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("$count серверов", color = GlassTextMuted, style = MaterialTheme.typography.labelMedium)
+            if (sub.announce.isNotBlank()) {
+                Text(sub.announce, color = GlassAccent.copy(0.9f), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+        }
+        IconButton(onClick = onRefresh) {
+            Icon(Icons.Outlined.Update, null, tint = GlassPrimary, modifier = Modifier.size(20.dp))
+        }
+        Icon(
+            if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            null,
+            tint = GlassTextMuted
+        )
     }
 }
 
@@ -261,14 +301,13 @@ private fun RegionRow(
 ) {
     val selected = server.isSelected
     val dead = server.latencyMs != null && server.latencyMs < 0
-    val dim = if (dead) 0.45f else 1f
     Row(
         Modifier
             .fillMaxWidth()
             .background(if (selected) GlassPrimary.copy(0.12f) else Color.Transparent)
             .clickable(enabled = !dead, onClick = onSelect)
             .padding(horizontal = 14.dp, vertical = 10.dp)
-            .alpha(dim),
+            .alpha(if (dead) 0.45f else 1f),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(server.flag.ifBlank { "🌐" }, fontSize = 22.sp)
@@ -282,13 +321,9 @@ private fun RegionRow(
                 overflow = TextOverflow.Ellipsis
             )
             if (showIp) {
-                val ipLine = when {
-                    server.exitIp.isNotBlank() -> server.exitIp
-                    server.address.isNotBlank() -> server.address
-                    else -> null
-                }
-                if (ipLine != null) {
-                    Text(ipLine, style = MaterialTheme.typography.labelSmall, color = GlassTextMuted, maxLines = 1)
+                val ip = server.exitIp.ifBlank { server.address }
+                if (ip.isNotBlank()) {
+                    Text(ip, style = MaterialTheme.typography.labelSmall, color = GlassTextMuted, maxLines = 1)
                 }
             }
             if (showProtocol) {
@@ -297,16 +332,8 @@ private fun RegionRow(
             }
         }
         when {
-            isPinging -> {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = GlassPrimary
-                )
-            }
-            dead -> {
-                Text("не отвечает", style = MaterialTheme.typography.labelSmall, color = GlassDanger)
-            }
+            isPinging -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = GlassPrimary)
+            dead -> Text("не отвечает", style = MaterialTheme.typography.labelSmall, color = GlassDanger)
             server.latencyMs != null -> {
                 val ms = server.latencyMs
                 val c = when {
