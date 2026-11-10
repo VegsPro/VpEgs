@@ -176,6 +176,7 @@ fun ServersScreen(vm: MainViewModel) {
                     )
                     is ServerListItem.Row -> RegionRow(
                         server = item.server,
+                        selected = item.server.id == vm.selectedServer?.id || item.server.isSelected,
                         showProtocol = vm.showServerProtocol,
                         showIp = vm.showServerIp,
                         isPinging = item.server.id in vm.pingingIds,
@@ -310,33 +311,56 @@ private fun SubHeader(
 @Composable
 private fun RegionRow(
     server: ServerNode,
+    selected: Boolean = server.isSelected,
     showProtocol: Boolean,
     showIp: Boolean,
     isPinging: Boolean,
     onSelect: () -> Unit,
     onFav: () -> Unit
 ) {
-    val selected = server.isSelected
     val dead = server.latencyMs != null && server.latencyMs < 0
+    val shape = RoundedCornerShape(14.dp)
     Row(
         Modifier
             .fillMaxWidth()
-            .background(if (selected) GlassPrimary.copy(0.12f) else Color.Transparent)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .clip(shape)
+            .background(
+                if (selected) GlassPrimary.copy(alpha = 0.22f)
+                else Color.Transparent
+            )
+            .border(
+                width = if (selected) 1.5.dp else 0.dp,
+                color = if (selected) GlassPrimary.copy(alpha = 0.85f) else Color.Transparent,
+                shape = shape
+            )
             .clickable(enabled = !dead, onClick = onSelect)
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
             .alpha(if (dead) 0.45f else 1f),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(server.flag.ifBlank { "🌐" }, fontSize = 22.sp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                server.country.ifBlank { server.name },
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (dead) GlassTextMuted else GlassText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    server.country.ifBlank { server.name },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = when {
+                        dead -> GlassTextMuted
+                        selected -> GlassPrimary
+                        else -> GlassText
+                    },
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (selected) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("✓", color = GlassPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
             if (showIp) {
                 val ip = server.exitIp.ifBlank { server.address }
                 if (ip.isNotBlank()) {

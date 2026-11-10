@@ -1165,6 +1165,25 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
         subscriptions = subscriptions.map { if (it.id == id) it.copy(autoUpdate = !it.autoUpdate) else it }
         persist()
     }
+    /** Packages in [directPkgs] → bypass VPN; packages in [scopePkgs] but not direct → through VPN. */
+    fun applyDirectAccessPackages(directPkgs: Set<String>, scopePkgs: Set<String>? = null) {
+        val scope = scopePkgs ?: directPkgs
+        appProxyList = appProxyList.map { app ->
+            when {
+                app.packageName !in scope -> app
+                app.packageName in directPkgs -> app.copy(proxyEnabled = false)
+                else -> app.copy(proxyEnabled = true)
+            }
+        }
+        val bypass = appProxyList.filter { !it.proxyEnabled }.map { it.packageName }.toSet()
+        appContext?.let { Prefs.saveBypassPackages(it, bypass) }
+        workStatus = "Обход обновлён · переподключите VPN"
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(2200)
+            if (workStatus.startsWith("Обход")) workStatus = ""
+        }
+    }
+
     fun toggleAppProxy(pkg: String) {
         appProxyList = appProxyList.map { if (it.packageName == pkg) it.copy(proxyEnabled = !it.proxyEnabled) else it }
         // proxyEnabled=false → bypass VPN
