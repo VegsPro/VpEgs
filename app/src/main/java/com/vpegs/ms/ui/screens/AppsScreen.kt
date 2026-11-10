@@ -100,7 +100,7 @@ fun AppsScreen(vm: MainViewModel) {
         Spacer(Modifier.height(10.dp))
         Button(
             onClick = { showRuDialog = true },
-            enabled = vm.appsLoaded && !vm.appsLoading,
+            enabled = !vm.appsLoading,
             colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary),
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth()
