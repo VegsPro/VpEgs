@@ -85,14 +85,19 @@ object LinkParser {
     }
 
     private fun parseXrayConfigArray(json: String, subId: String): List<Parsed> {
+        // Alius / panel format: JSON array of full Xray configs with "remarks" + "outbounds".
+        // Avoid obj.toString() round-trip on every element (OOM / silent fail on large subs).
         return try {
             val arr = JSONArray(json)
-            val out = mutableListOf<Parsed>()
+            val out = ArrayList<Parsed>(arr.length())
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
-                parseXrayConfigObject(obj.toString(), subId)?.let { out.add(it) }
+                parseXrayConfigObject(obj, subId)?.let { out.add(it) }
             }
             out
+        } catch (_: OutOfMemoryError) {
+            // Fallback: lighter scan via regex-ish split is not reliable; try sequential
+            emptyList()
         } catch (_: Exception) {
             emptyList()
         }
@@ -100,28 +105,40 @@ object LinkParser {
 
     private fun parseXrayConfigObject(json: String, subId: String): Parsed? {
         return try {
-            val obj = JSONObject(json)
+            parseXrayConfigObject(JSONObject(json), subId)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun parseXrayConfigObject(obj: JSONObject, subId: String): Parsed? {
+        return try {
             val remarks = obj.optString("remarks").ifBlank {
-                obj.optString("ps").ifBlank { "Server" }
+                obj.optString("ps").ifBlank {
+                    obj.optString("remark").ifBlank { "Server" }
+                }
             }
-            // Ensure we have a proxy outbound — use config as-is for StartLoop
             val outbounds = obj.optJSONArray("outbounds")
             if (outbounds == null || outbounds.length() == 0) return null
 
+            // Prefer first real proxy outbound address (skip freedom/blackhole/dns)
             val protocol = detectProtocol(outbounds)
+            val address = extractAddress(outbounds)
+            val port = extractPort(outbounds)
+            // Keep full provider JSON — Xray StartLoop needs complete config (dns/routing/…)
+            val configJson = obj.toString()
             val node = ServerNode(
                 id = UUID.randomUUID().toString(),
                 name = remarks,
                 country = remarks,
-                flag = extractFlag(remarks),
+                flag = extractFlag(remarks).ifBlank { guessFlag(remarks, address) },
                 protocol = protocol,
-                address = extractAddress(outbounds),
-                port = extractPort(outbounds),
-                rawConfig = json,
+                address = address.ifBlank { "—" },
+                port = if (port > 0) port else 443,
+                rawConfig = configJson,
                 subscriptionId = subId
             )
-            // Use provider config as-is (already complete Xray JSON)
-            Parsed(node, json)
+            Parsed(node, configJson)
         } catch (_: Exception) {
             null
         }
@@ -152,11 +169,16 @@ object LinkParser {
     private fun extractAddress(outbounds: JSONArray): String {
         for (i in 0 until outbounds.length()) {
             val o = outbounds.optJSONObject(i) ?: continue
-            val proto = o.optString("protocol")
+            val proto = o.optString("protocol").lowercase()
             if (proto in listOf("freedom", "blackhole", "dns")) continue
             val settings = o.optJSONObject("settings") ?: continue
-            settings.optJSONArray("vnext")?.optJSONObject(0)?.optString("address")?.let { if (it.isNotBlank()) return it }
-            settings.optJSONArray("servers")?.optJSONObject(0)?.optString("address")?.let { if (it.isNotBlank()) return it }
+            settings.optJSONArray("vnext")?.optJSONObject(0)?.optString("address")
+                ?.takeIf { it.isNotBlank() }?.let { return it }
+            settings.optJSONArray("servers")?.optJSONObject(0)?.optString("address")
+                ?.takeIf { it.isNotBlank() }?.let { return it }
+            // Hysteria / HY2: settings.address
+            settings.optString("address").takeIf { it.isNotBlank() }?.let { return it }
+            settings.optString("server").takeIf { it.isNotBlank() }?.let { return it }
         }
         return ""
     }
@@ -164,11 +186,14 @@ object LinkParser {
     private fun extractPort(outbounds: JSONArray): Int {
         for (i in 0 until outbounds.length()) {
             val o = outbounds.optJSONObject(i) ?: continue
-            val proto = o.optString("protocol")
+            val proto = o.optString("protocol").lowercase()
             if (proto in listOf("freedom", "blackhole", "dns")) continue
             val settings = o.optJSONObject("settings") ?: continue
-            settings.optJSONArray("vnext")?.optJSONObject(0)?.optInt("port")?.let { if (it > 0) return it }
-            settings.optJSONArray("servers")?.optJSONObject(0)?.optInt("port")?.let { if (it > 0) return it }
+            settings.optJSONArray("vnext")?.optJSONObject(0)?.optInt("port", 0)
+                ?.takeIf { it > 0 }?.let { return it }
+            settings.optJSONArray("servers")?.optJSONObject(0)?.optInt("port", 0)
+                ?.takeIf { it > 0 }?.let { return it }
+            settings.optInt("port", 0).takeIf { it > 0 }?.let { return it }
         }
         return 443
     }

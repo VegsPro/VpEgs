@@ -919,53 +919,93 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
     )
 
     private fun fetchSubscription(url: String): FetchResult {
-        if (url.startsWith("vless://") || url.startsWith("vmess://") || url.startsWith("trojan://") || url.startsWith("ss://")) {
+        if (url.startsWith("vless://") || url.startsWith("vmess://") ||
+            url.startsWith("trojan://") || url.startsWith("ss://")
+        ) {
             return FetchResult(body = url)
         }
         val client = okhttp3.OkHttpClient.Builder()
-            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .connectTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
             .build()
-        val req = okhttp3.Request.Builder().url(url).header("User-Agent", "v2rayNG/1.8.19").build()
-        client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
-            val body = resp.body?.string() ?: ""
-            // subscription-userinfo: upload=; download=; total=; expire=
-            var up = 0L; var down = 0L; var total = 0L; var exp = 0L
-            val ui = resp.header("subscription-userinfo") ?: resp.header("Subscription-Userinfo")
-            if (ui != null) {
-                ui.split(";").forEach { part ->
-                    val kv = part.trim().split("=")
-                    if (kv.size == 2) {
-                        val v = kv[1].trim().toLongOrNull() ?: 0L
-                        when (kv[0].trim().lowercase()) {
-                            "upload" -> up = v
-                            "download" -> down = v
-                            "total" -> total = v
-                            "expire" -> exp = v
+        // Alius and similar panels vary body by User-Agent
+        val agents = listOf(
+            "v2rayNG/1.8.19",
+            "Happ/1.0.0",
+            "clash-meta/1.0",
+            "Mozilla/5.0"
+        )
+        var lastError: Exception? = null
+        for (ua in agents) {
+            try {
+                val req = okhttp3.Request.Builder()
+                    .url(url)
+                    .header("User-Agent", ua)
+                    .header("Accept", "*/*")
+                    .get()
+                    .build()
+                client.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
+                    val body = resp.body?.string() ?: ""
+                    if (body.isBlank()) throw IllegalStateException("empty body")
+                    var up = 0L; var down = 0L; var total = 0L; var exp = 0L
+                    val ui = resp.header("subscription-userinfo")
+                        ?: resp.header("Subscription-Userinfo")
+                    if (ui != null) {
+                        ui.split(";").forEach { part ->
+                            val kv = part.trim().split("=")
+                            if (kv.size == 2) {
+                                val v = kv[1].trim().toLongOrNull() ?: 0L
+                                when (kv[0].trim().lowercase()) {
+                                    "upload" -> up = v
+                                    "download" -> down = v
+                                    "total" -> total = v
+                                    "expire" -> exp = v
+                                }
+                            }
                         }
                     }
+                    fun hdr(name: String) = resp.header(name) ?: resp.header(name.lowercase()) ?: ""
+                    val titleB64 = hdr("profile-title").removePrefix("base64:")
+                    val title = try {
+                        if (titleB64.isNotBlank())
+                            String(android.util.Base64.decode(titleB64, android.util.Base64.DEFAULT))
+                        else ""
+                    } catch (_: Exception) { "" }
+                    val announceRaw = hdr("announce")
+                    val announce = try {
+                        if (announceRaw.startsWith("base64:"))
+                            String(
+                                android.util.Base64.decode(
+                                    announceRaw.removePrefix("base64:"),
+                                    android.util.Base64.DEFAULT
+                                )
+                            )
+                        else announceRaw
+                    } catch (_: Exception) { announceRaw }
+                    val interval = hdr("profile-update-interval").toIntOrNull() ?: 6
+                    // Prefer bodies that look like configs / link lists
+                    val trimmed = body.trim()
+                    val looksUseful = trimmed.startsWith("[") || trimmed.startsWith("{") ||
+                        "vless://" in trimmed || "vmess://" in trimmed ||
+                        "trojan://" in trimmed || "ss://" in trimmed ||
+                        trimmed.length > 80
+                    if (!looksUseful && ua != agents.last()) {
+                        throw IllegalStateException("body not useful for $ua")
+                    }
+                    return FetchResult(
+                        body = body, upload = up, download = down, total = total, expire = exp,
+                        title = title, announce = announce, webPage = hdr("profile-web-page-url"),
+                        updateInterval = interval
+                    )
                 }
+            } catch (e: Exception) {
+                lastError = e
             }
-            fun hdr(name: String) = resp.header(name) ?: resp.header(name.lowercase()) ?: ""
-            val titleB64 = hdr("profile-title").removePrefix("base64:")
-            val title = try {
-                if (titleB64.isNotBlank()) String(android.util.Base64.decode(titleB64, android.util.Base64.DEFAULT))
-                else ""
-            } catch (_: Exception) { "" }
-            val announceB64 = hdr("announce").removePrefix("base64:")
-            val announce = try {
-                if (announceB64.isNotBlank() && hdr("announce").startsWith("base64:"))
-                    String(android.util.Base64.decode(announceB64, android.util.Base64.DEFAULT))
-                else hdr("announce")
-            } catch (_: Exception) { hdr("announce") }
-            val interval = hdr("profile-update-interval").toIntOrNull() ?: 6
-            return FetchResult(
-                body = body, upload = up, download = down, total = total, expire = exp,
-                title = title, announce = announce, webPage = hdr("profile-web-page-url"),
-                updateInterval = interval
-            )
         }
+        throw lastError ?: IllegalStateException("subscription fetch failed")
     }
 
     fun updateSubscription(id: String, name: String, url: String) {
