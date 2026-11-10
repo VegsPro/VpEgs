@@ -400,8 +400,28 @@ fun SettingsScreen(vm: MainViewModel) {
         GlassCard(Modifier.fillMaxWidth()) {
             Info(Icons.Outlined.Info, "Версия", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             Info(Icons.Outlined.Security, "Конфиденциальность", "Данные только на устройстве")
-            Info(Icons.Outlined.Widgets, "Виджет", "Пинг · Обновить · Лучший")
             Spacer(Modifier.height(4.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        try {
+                            ctx.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/VegsPro/VpEgs"))
+                            )
+                        } catch (_: Exception) {}
+                    }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.Code, null, tint = GlassPrimary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("GitHub", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("VegsPro/VpEgs", style = MaterialTheme.typography.labelMedium, color = GlassAccent)
+                }
+            }
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -419,7 +439,7 @@ fun SettingsScreen(vm: MainViewModel) {
                 Icon(Icons.Outlined.Send, null, tint = GlassPrimary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("Telegram автора", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Telegram", style = MaterialTheme.typography.bodyLarge, color = GlassText)
                     Text("@mstrblock", style = MaterialTheme.typography.labelMedium, color = GlassAccent)
                 }
             }
