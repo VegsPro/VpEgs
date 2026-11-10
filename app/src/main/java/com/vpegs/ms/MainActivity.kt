@@ -182,7 +182,15 @@ private fun GlassBottomBar(
     onSelect: (Screen) -> Unit
 ) {
     val shape = RoundedCornerShape(32.dp)
-    val barStyle = HazeStyle(
+    val barStyle = if (GlassIsLight) HazeStyle(
+        backgroundColor = Color.White.copy(alpha = 0.55f),
+        tints = listOf(
+            HazeTint(Color.White.copy(alpha = 0.35f)),
+            HazeTint(GlassPrimary.copy(alpha = 0.10f)),
+            HazeTint(Color.Black.copy(alpha = 0.04f)),
+        ),
+        blurRadius = 48.dp,
+    ) else HazeStyle(
         backgroundColor = Color(0xFF0B1220).copy(alpha = 0.55f),
         tints = listOf(
             HazeTint(Color.White.copy(alpha = 0.18f)),
@@ -198,11 +206,12 @@ private fun GlassBottomBar(
         .clip(shape)
         .then(
             if (glassOn) {
-                // Frosted underlay + real backdrop blur (SimpMusic-style)
+                val under = if (GlassIsLight) Color.White.copy(alpha = 0.78f) else Color(0xCC0B1220)
+                val edge = if (GlassIsLight) Color.Black.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.22f)
                 Modifier
-                    .background(Color(0xCC0B1220), shape)
+                    .background(under, shape)
                     .hazeEffect(state = hazeState, style = barStyle)
-                    .border(1.dp, Color.White.copy(alpha = 0.22f), shape)
+                    .border(1.dp, edge, shape)
             } else {
                 Modifier
                     .background(GlassSurface)

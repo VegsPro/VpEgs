@@ -37,9 +37,17 @@ fun GlassCard(
 ) {
     val glassOn = LocalGlassEnabled.current
     val shape = RoundedCornerShape(20.dp)
-    // SimpMusic: content sits on solid page; cards are translucent panels (blur is for floating chrome only)
-    val bg = if (glassOn) Color.White.copy(alpha = 0.08f) else GlassSurfaceHigh
-    val border = if (glassOn) Color.White.copy(alpha = 0.16f) else GlassBorder
+    // Light themes need dark translucent glass; dark themes use light frost
+    val bg = when {
+        glassOn && GlassIsLight -> Color.White.copy(alpha = 0.72f)
+        glassOn -> Color.White.copy(alpha = 0.08f)
+        else -> GlassSurfaceHigh
+    }
+    val border = when {
+        glassOn && GlassIsLight -> Color.Black.copy(alpha = 0.10f)
+        glassOn -> Color.White.copy(alpha = 0.16f)
+        else -> GlassBorder
+    }
     var mod = modifier
         .clip(shape)
         .background(bg)

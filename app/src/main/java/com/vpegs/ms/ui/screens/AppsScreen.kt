@@ -5,6 +5,8 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,46 +21,141 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.vpegs.ms.data.AppProxyItem
 import com.vpegs.ms.ui.components.GlassCard
 import com.vpegs.ms.ui.components.GlassSwitch
 import com.vpegs.ms.ui.theme.*
 import com.vpegs.ms.viewmodel.MainViewModel
 
-/** Known Russian / CIS apps — matched by package name contains / equals. */
-private data class RuPreset(val title: String, val packages: List<String>)
-
-private val RU_PRESETS = listOf(
-    RuPreset("Яндекс", listOf(
-        "ru.yandex.searchplugin", "com.yandex.browser", "ru.yandex.yandexmaps",
-        "ru.yandex.taxi", "ru.yandex.music", "ru.yandex.androidkeyboard",
-        "com.yandex.bank", "ru.yandex.disk", "com.yandex.mobile.realty",
-        "ru.yandex.mail", "com.yandex.iot"
-    )),
-    RuPreset("Макс", listOf("ru.oneme.app", "com.max.android", "ru.mail.max")),
-    RuPreset("Госуслуги", listOf("ru.gosuslugi.mobile", "ru.rostel.gosuslugi")),
-    RuPreset("Wildberries", listOf("com.wildberries.ru")),
-    RuPreset("Ozon", listOf("ru.ozon.app.android")),
-    RuPreset("VK", listOf("com.vkontakte.android", "com.vk.im", "com.vk.clips")),
-    RuPreset("Сбер", listOf("ru.sberbankmobile", "ru.sberbank.sberbankid")),
-    RuPreset("Тинькофф", listOf("com.idamob.tinkoff.android")),
-    RuPreset("Авито", listOf("com.avito.android")),
-    RuPreset("2ГИС", listOf("ru.dublgis.dgismobile")),
-    RuPreset("Mail.ru", listOf("ru.mail.mailapp", "ru.mail.cloud")),
-    RuPreset("Одноклассники", listOf("ru.ok.android")),
-    RuPreset("МТС", listOf("ru.mts.mymts", "ru.mts.money")),
-    RuPreset("МегаФон", listOf("ru.megafon.mlk")),
-    RuPreset("Теле2", listOf("ru.tele2.mytele2")),
-    RuPreset("Альфа-Банк", listOf("ru.alfabank.mobile.android")),
-    RuPreset("ВТБ", listOf("ru.vtb24.mobilebanking.android")),
-    RuPreset("Кинопоиск", listOf("ru.kinopoisk")),
-    RuPreset("IVI", listOf("ru.ivi.client")),
-    RuPreset("Rutube", listOf("ru.rutube.app")),
+/**
+ * Broad matchers for RU/CIS apps: package substring or app name keywords.
+ * Ordered by company for grouping in the dialog.
+ */
+private data class RuGroup(
+    val title: String,
+    val packageNeedles: List<String>,
+    val nameNeedles: List<String> = emptyList()
 )
+
+private val RU_GROUPS = listOf(
+    RuGroup(
+        "Яндекс",
+        listOf(
+            "yandex", "ru.yandex", "com.yandex", "zen.yandex", "ya.android",
+            "yango", "eddy.yandex", "auto.ru"
+        ),
+        listOf("яндекс", "yandex", "алиса", "киса", "авто.ру", "auto.ru")
+    ),
+    RuGroup(
+        "VK / Mail",
+        listOf(
+            "vkontakte", "com.vk.", "ru.vk.", "vk.im", "vk.clips", "vk.video",
+            "vk.admin", "vk.calls", "vk.music", "vk.music.action",
+            "ru.mail.", "com.mail.ru", "my.mail", "ok.android", "odnoklassniki"
+        ),
+        listOf("вконтакте", "вк ", "vk ", "одноклассники", "mail.ru", "мейл")
+    ),
+    RuGroup(
+        "Макс",
+        listOf("ru.oneme.app", "oneme.app", "max.messenger", "com.max."),
+        listOf("макс", "max ")
+    ),
+    RuGroup(
+        "Госуслуги / Гос",
+        listOf("gosuslugi", "goskey", "mincifry", "nalog", "mos.ru", "dit.mos", "gu.spb"),
+        listOf("госуслуги", "госключ", "налог", "мой налог")
+    ),
+    RuGroup(
+        "Маркетплейсы",
+        listOf(
+            "wildberries", "wb.android", "ozon.app", "ru.ozon", "aliexpress",
+            "sbermegamarket", "megamarket", "lamoda", "detmir", "mvideo",
+            "eldorado", "citilink", "dns.shop", "leroy"
+        ),
+        listOf("wildberries", "вайлдберриз", "ozon", "озон", "ламода", "мегамаркет", "dns", "м.видео")
+    ),
+    RuGroup(
+        "Банки",
+        listOf(
+            "sberbank", "sber.", "tinkoff", "idamob.tinkoff", "alfabank", "vtb24",
+            "vtb.", "openbank", "gazprombank", "rshb", "rosbank", "homecredit",
+            "sovcombank", "raiffeisen", "yoomoney", "yookassa", "qiwi"
+        ),
+        listOf("сбер", "тинькофф", "т-банк", "альфа", "втб", "юmoney", "qiwi")
+    ),
+    RuGroup(
+        "Операторы",
+        listOf("mts.", "megafon", "tele2", "beeline", "yota", "t2.ru", "rostel"),
+        listOf("мтс", "мегафон", "теле2", "билайн", "йота")
+    ),
+    RuGroup(
+        "Карты / Транспорт",
+        listOf(
+            "dublgis", "2gis", "citymapper", "ru.yandex.yandexmaps",
+            "moscow.transport", "troika", "citi.mobil", "citymobil",
+            "gett", "inDriver", "ru.taxi"
+        ),
+        listOf("2гис", "2gis", "ситимобил", "тройка")
+    ),
+    RuGroup(
+        "Объявления / Работа",
+        listOf("avito", "youla", "hh.android", "headhunter", "superjob", "drom."),
+        listOf("авито", "юла", "hh", "хедхантер", "дром")
+    ),
+    RuGroup(
+        "Медиа",
+        listOf(
+            "kinopoisk", "ivi.client", "rutube", "more.tv", "start.android",
+            "premier.android", "wink.", "zvuk", "boom.android", "zvooq"
+        ),
+        listOf("кинопоиск", "ivi", "rutube", "Wink", "звук", "premier")
+    ),
+    RuGroup(
+        "Прочее RU",
+        listOf(
+            "rustore", "vk.store", "sberbank.sberdevices", "salute",
+            "beru.", "delivery club", "dc.client", "samokat", "magnit",
+            "pyaterochka", "x5.", "lenta.", "okko", "kion"
+        ),
+        listOf("rustore", "сбердевайс", "самокат", "магнит", "пятёрочка", "лента", "окко", "kion")
+    ),
+)
+
+private fun matchGroup(app: AppProxyItem, group: RuGroup): Boolean {
+    val p = app.packageName.lowercase()
+    val n = app.appName.lowercase()
+    if (group.packageNeedles.any { p.contains(it.lowercase()) }) return true
+    if (group.nameNeedles.any { n.contains(it.lowercase()) }) return true
+    return false
+}
+
+private fun collectRuApps(installed: List<AppProxyItem>): List<Pair<String, List<AppProxyItem>>> {
+    val used = mutableSetOf<String>()
+    val out = mutableListOf<Pair<String, List<AppProxyItem>>>()
+    for (g in RU_GROUPS) {
+        val found = installed.filter { matchGroup(it, g) && it.packageName !in used }
+            .distinctBy { it.packageName }
+            .sortedBy { it.appName.lowercase() }
+        if (found.isNotEmpty()) {
+            found.forEach { used += it.packageName }
+            out += g.title to found
+        }
+    }
+    // Catch-all: remaining with .ru TLD-style packages or cyrillic names
+    val rest = installed.filter { app ->
+        app.packageName !in used && (
+            app.packageName.startsWith("ru.") ||
+                app.appName.any { it in '\u0400'..'\u04FF' }
+            )
+    }.sortedBy { it.appName.lowercase() }
+    if (rest.isNotEmpty()) out += "Другие RU" to rest.take(80)
+    return out
+}
 
 @Composable
 fun AppsScreen(vm: MainViewModel) {
@@ -101,7 +198,10 @@ fun AppsScreen(vm: MainViewModel) {
         Button(
             onClick = { showRuDialog = true },
             enabled = !vm.appsLoading,
-            colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = GlassPrimary,
+                contentColor = if (GlassIsLight) Color.White else GlassText
+            ),
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -120,7 +220,7 @@ fun AppsScreen(vm: MainViewModel) {
             color = GlassText
         )
         Text(
-            "Госуслуги и банки часто видят «VPN включён» по системному интерфейсу, даже если трафик приложения идёт напрямую.",
+            "Госуслуги и банки часто видят «VPN включён» по системному интерфейсу, даже если трафик идёт напрямую.",
             style = MaterialTheme.typography.labelMedium,
             color = GlassTextMuted
         )
@@ -130,14 +230,17 @@ fun AppsScreen(vm: MainViewModel) {
             onValueChange = { vm.updateAppSearch(it) },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("Поиск приложений…", color = GlassTextMuted) },
-            leadingIcon = { Icon(Icons.Default.Search, null) },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = GlassTextMuted) },
             singleLine = true,
             shape = RoundedCornerShape(14.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = GlassPrimary,
                 unfocusedBorderColor = GlassBorder,
-                focusedContainerColor = GlassSurfaceHigh,
-                unfocusedContainerColor = GlassSurfaceHigh
+                focusedContainerColor = if (GlassIsLight) Color.White.copy(0.9f) else GlassSurfaceHigh,
+                unfocusedContainerColor = if (GlassIsLight) Color.White.copy(0.75f) else GlassSurfaceHigh,
+                focusedTextColor = GlassText,
+                unfocusedTextColor = GlassText,
+                cursorColor = GlassPrimary
             )
         )
         Spacer(Modifier.height(10.dp))
@@ -186,57 +289,54 @@ private fun RussianAppsDialog(
     onDismiss: () -> Unit,
     onApply: (direct: Set<String>, scope: Set<String>) -> Unit
 ) {
-    // Only presets that match at least one installed package
-    val matches = remember(installed) {
-        val pkgs = installed.map { it.packageName }.toSet()
-        RU_PRESETS.mapNotNull { preset ->
-            val found = installed.filter { app ->
-                preset.packages.any { p ->
-                    app.packageName.equals(p, true) || app.packageName.startsWith("$p.")
-                } || preset.title.equals(app.appName, true) ||
-                    app.appName.contains(preset.title, ignoreCase = true) ||
-                    // broader yandex / vk match
-                    (preset.title == "Яндекс" && app.packageName.contains("yandex", true)) ||
-                    (preset.title == "VK" && (app.packageName.startsWith("com.vk") || app.packageName.contains("vkontakte")))
-            }.map { it.packageName }.distinct()
-            if (found.isEmpty()) null else preset.title to found
-        }
+    val groups = remember(installed) { collectRuApps(installed) }
+    val allPkgs = remember(groups) { groups.flatMap { it.second.map { a -> a.packageName } }.toSet() }
+    val initial = remember(groups, installed) {
+        installed.filter { it.packageName in allPkgs && !it.proxyEnabled }.map { it.packageName }.toSet()
     }
-    // Checked = go direct (bypass VPN). Default: all matched already direct stay checked
-    val initial = remember(matches, installed) {
-        val direct = installed.filter { !it.proxyEnabled }.map { it.packageName }.toSet()
-        matches.flatMap { it.second }.filter { it in direct }.toMutableSet()
-    }
-    var checked by remember { mutableStateOf(initial.toSet()) }
+    var checked by remember { mutableStateOf(initial) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Российские приложения", color = GlassText) },
+        title = {
+            Text(
+                "Российские приложения (${allPkgs.size})",
+                color = GlassText
+            )
+        },
         text = {
-            if (matches.isEmpty()) {
-                Text(
-                    "На устройстве не найдено приложений из списка (Яндекс, WB, Госуслуги…).",
-                    color = GlassTextMuted
-                )
+            if (groups.isEmpty()) {
+                Text("Подходящих приложений не найдено.", color = GlassTextMuted)
             } else {
-                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
                     Text(
-                        "Галочка = напрямую (минуя VPN). Снимите — через VPN. «Применить» обновит только этот список.",
+                        "Галочка = напрямую (мимо VPN). «Применить» только для этого списка.",
                         style = MaterialTheme.typography.labelMedium,
                         color = GlassTextMuted
                     )
-                    Spacer(Modifier.height(10.dp))
-                    matches.forEach { (title, pkgs) ->
-                        pkgs.forEach { pkg ->
-                            val app = installed.find { it.packageName == pkg }
-                            val label = app?.appName ?: title
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { checked = allPkgs }) {
+                            Text("Все", color = GlassPrimary)
+                        }
+                        TextButton(onClick = { checked = emptySet() }) {
+                            Text("Снять", color = GlassTextMuted)
+                        }
+                    }
+                    groups.forEach { (title, apps) ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(title, color = GlassPrimary, style = MaterialTheme.typography.titleSmall)
+                        Spacer(Modifier.height(4.dp))
+                        apps.forEach { app ->
+                            val pkg = app.packageName
                             Row(
                                 Modifier
                                     .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable {
                                         checked = if (pkg in checked) checked - pkg else checked + pkg
                                     }
-                                    .padding(vertical = 6.dp),
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Checkbox(
@@ -246,12 +346,25 @@ private fun RussianAppsDialog(
                                     },
                                     colors = CheckboxDefaults.colors(
                                         checkedColor = GlassPrimary,
-                                        uncheckedColor = GlassTextMuted
+                                        uncheckedColor = GlassTextMuted,
+                                        checkmarkColor = if (GlassIsLight) Color.White else GlassText
                                     )
                                 )
+                                AppIcon(app.icon)
+                                Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(label, color = GlassText, style = MaterialTheme.typography.bodyLarge)
-                                    Text(pkg, color = GlassTextMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                    Text(
+                                        app.appName,
+                                        color = GlassText,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        pkg,
+                                        color = GlassTextMuted,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1
+                                    )
                                 }
                             }
                         }
@@ -261,27 +374,27 @@ private fun RussianAppsDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = {
-                    val allRuPkgs = matches.flatMap { it.second }.toSet()
-                    // Pass: which of RU list should be direct; apply handles both on/off
-                    val scope = matches.flatMap { it.second }.toSet()
-                    onApply(checked, scope)
-                },
-                enabled = matches.isNotEmpty()
+                onClick = { onApply(checked, allPkgs) },
+                enabled = groups.isNotEmpty()
             ) { Text("Применить", color = GlassPrimary) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Отмена", color = GlassTextMuted) }
         },
-        containerColor = GlassSurfaceHigh
+        containerColor = if (GlassIsLight) Color.White else GlassSurfaceHigh,
+        titleContentColor = GlassText,
+        textContentColor = GlassText
     )
 }
 
 @Composable
 private fun AppRow(app: AppProxyItem, onToggle: () -> Unit) {
+    val rowBg = if (GlassIsLight) Color.White.copy(alpha = 0.88f) else GlassSurfaceHigh
+    val rowBorder = if (GlassIsLight) Color.Black.copy(alpha = 0.08f) else GlassBorder
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = GlassSurfaceHigh,
+        color = rowBg,
+        border = androidx.compose.foundation.BorderStroke(1.dp, rowBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -302,7 +415,7 @@ private fun AppRow(app: AppProxyItem, onToggle: () -> Unit) {
             Text(
                 if (app.proxyEnabled) "VPN" else "Напрямую",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (app.proxyEnabled) GlassAccent else GlassTextMuted
+                color = if (app.proxyEnabled) GlassPrimary else GlassTextMuted
             )
             Spacer(Modifier.width(6.dp))
             GlassSwitch(checked = app.proxyEnabled, onCheckedChange = { onToggle() })
@@ -317,10 +430,17 @@ private fun AppIcon(drawable: Drawable?) {
         Image(
             bitmap = bmp.asImageBitmap(),
             contentDescription = null,
-            modifier = Modifier.size(40.dp)
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
         )
     } else {
-        Box(Modifier.size(40.dp))
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(GlassPrimary.copy(0.15f))
+        )
     }
 }
 

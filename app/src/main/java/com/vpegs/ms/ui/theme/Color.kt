@@ -15,6 +15,7 @@ var GlassTextMuted = Color(0xFF94A3B8)
 var GlassDanger = Color(0xFFF87171)
 var GlassWarning = Color(0xFFFBBF24)
 var GlassSuccess = Color(0xFF4ADE80)
+var GlassIsLight = false
 
 enum class AppThemeId(val title: String) {
     DARK_BLUE("Тёмная синяя"),
@@ -87,4 +88,5 @@ fun applyPalette(p: ThemePalette) {
     GlassAccent = p.accent
     GlassText = p.text
     GlassTextMuted = p.textMuted
+    GlassIsLight = p.isLight
 }
