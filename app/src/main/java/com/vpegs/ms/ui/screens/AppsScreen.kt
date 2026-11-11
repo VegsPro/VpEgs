@@ -42,95 +42,153 @@ private data class RuGroup(
     val nameNeedles: List<String> = emptyList()
 )
 
+/** Packages/prefixes that are never "Russian apps" even if label is in Russian. */
+private val NON_RU_PACKAGE_BLOCK = listOf(
+    "com.google.", "com.android.", "com.samsung.", "com.sec.", "com.miui.",
+    "com.xiaomi.", "com.huawei.", "com.oppo.", "com.realme.", "com.oneplus.",
+    "com.coloros.", "com.oplus.", "com.transsion.", "com.nothing.",
+    "com.microsoft.", "com.facebook.", "com.instagram.", "com.whatsapp",
+    "com.telegram.", "org.telegram.", "com.spotify.", "com.netflix.",
+    "com.discord.", "com.twitter.", "com.zhiliaoapp.", "com.ss.android.",
+    "com.apple.", "com.chrome.", "com.brave.", "org.mozilla.",
+    "com.android.chrome", "com.google.android", "com.android.vending",
+    "com.android.settings", "com.android.calculator", "com.android.calendar",
+    "com.android.deskclock", "com.android.contacts", "com.android.camera",
+    "com.mi.android", "com.samsung.android", "com.sec.android"
+)
+
+private fun isBlockedForeign(pkg: String): Boolean {
+    val p = pkg.lowercase()
+    return NON_RU_PACKAGE_BLOCK.any { p.startsWith(it) || p.contains(it) }
+}
+
 private val RU_GROUPS = listOf(
     RuGroup(
         "Яндекс",
         listOf(
             "yandex", "ru.yandex", "com.yandex", "zen.yandex", "ya.android",
-            "yango", "eddy.yandex", "auto.ru"
+            "yango", "auto.ru", "com.yango", "ru.kinopoisk"
         ),
-        listOf("яндекс", "yandex", "алиса", "киса", "авто.ру", "auto.ru")
+        listOf("яндекс", "yandex", "алиса", "авто.ру")
     ),
     RuGroup(
         "VK / Mail",
         listOf(
             "vkontakte", "com.vk.", "ru.vk.", "vk.im", "vk.clips", "vk.video",
-            "vk.admin", "vk.calls", "vk.music", "vk.music.action",
-            "ru.mail.", "com.mail.ru", "my.mail", "ok.android", "odnoklassniki"
+            "vk.admin", "vk.calls", "vk.music", "ru.mail.", "com.mail.ru",
+            "my.mail", "ok.android", "odnoklassniki", "ru.ok."
         ),
-        listOf("вконтакте", "вк ", "vk ", "одноклассники", "mail.ru", "мейл")
+        listOf("вконтакте", "одноклассники", "mail.ru", "мейл.ру")
     ),
     RuGroup(
         "Макс",
-        listOf("ru.oneme.app", "oneme.app", "max.messenger", "com.max."),
-        listOf("макс", "max ")
+        listOf("ru.oneme.app", "oneme.app", "ru.ok.max", "max.ru"),
+        listOf("мессенджер макс", "max —")
     ),
     RuGroup(
         "Госуслуги / Гос",
-        listOf("gosuslugi", "goskey", "mincifry", "nalog", "mos.ru", "dit.mos", "gu.spb"),
-        listOf("госуслуги", "госключ", "налог", "мой налог")
+        listOf(
+            "gosuslugi", "goskey", "mincifry", "nalog", "mos.ru", "dit.mos",
+            "gu.spb", "ru.rts.gosuslugi", "ru.rostel"
+        ),
+        listOf("госуслуги", "госключ", "мой налог", "налог ру")
+    ),
+    RuGroup(
+        "Образование",
+        listOf(
+            "myschool", "мояшкола", "mes.mos", "mos.school", "dnevnik",
+            "eljur", "netschool", "edu.mos", "school.mos", "ya.class",
+            "uchiru", "foxford", "skyeng", "maximum.edu", "resh.edu",
+            "yaklass", "ru.mobile.edu", "ru.mos.edusschool"
+        ),
+        listOf("моя школа", "электронный дневник", "дневник.ру", "фоксфорд", "учу.ру", "якласс")
     ),
     RuGroup(
         "Маркетплейсы",
         listOf(
-            "wildberries", "wb.android", "ozon.app", "ru.ozon", "aliexpress",
+            "wildberries", "wb.ru", "wb.android", "ozon", "aliexpress.ru",
             "sbermegamarket", "megamarket", "lamoda", "detmir", "mvideo",
-            "eldorado", "citilink", "dns.shop", "leroy"
+            "eldorado", "citilink", "dns.shop", "leroy", "flowwow", "kazanexpress",
+            "ru.ozon", "com.ozon", "ru.wildberries", "com.wildberries"
         ),
-        listOf("wildberries", "вайлдберриз", "ozon", "озон", "ламода", "мегамаркет", "dns", "м.видео")
+        listOf("wildberries", "вайлдберриз", "ozon", "озон", "ламода", "мегамаркет", "dns", "м.видео", "kazanexpress")
     ),
     RuGroup(
         "Банки",
         listOf(
             "sberbank", "sber.", "tinkoff", "idamob.tinkoff", "alfabank", "vtb24",
             "vtb.", "openbank", "gazprombank", "rshb", "rosbank", "homecredit",
-            "sovcombank", "raiffeisen", "yoomoney", "yookassa", "qiwi"
+            "sovcombank", "raiffeisen", "yoomoney", "yookassa", "qiwi",
+            "tochka", "modulbank", "rocketbank", "psbank", "bspb"
         ),
-        listOf("сбер", "тинькофф", "т-банк", "альфа", "втб", "юmoney", "qiwi")
+        listOf("сбербанк", "сбер ", "тинькофф", "т-банк", "альфа-банк", "втб", "юmoney", "qiwi")
     ),
     RuGroup(
         "Операторы",
-        listOf("mts.", "megafon", "tele2", "beeline", "yota", "t2.ru", "rostel"),
+        listOf("mts.", "megafon", "tele2", "beeline", "yota", "t2.ru", "rostel", "ru.mts", "ru.beeline"),
         listOf("мтс", "мегафон", "теле2", "билайн", "йота")
     ),
     RuGroup(
         "Карты / Транспорт",
         listOf(
-            "dublgis", "2gis", "citymapper", "ru.yandex.yandexmaps",
-            "moscow.transport", "troika", "citi.mobil", "citymobil",
-            "gett", "inDriver", "ru.taxi"
+            "dublgis", "2gis", "moscow.transport", "troika", "citymobil",
+            "citi.mobil", "gett", "indriver", "ru.taxi", "maxim.taxi",
+            "ru.yandex.yandexnavi", "yandex.maps"
         ),
-        listOf("2гис", "2gis", "ситимобил", "тройка")
+        listOf("2гис", "2gis", "ситимобил", "тройка", "яндекс.go", "яндекс про")
     ),
     RuGroup(
         "Объявления / Работа",
-        listOf("avito", "youla", "hh.android", "headhunter", "superjob", "drom."),
-        listOf("авито", "юла", "hh", "хедхантер", "дром")
+        listOf("avito", "youla", "hh.android", "headhunter", "superjob", "drom.", "farpost", "cian"),
+        listOf("авито", "юла", "хедхантер", "дром", "циан")
     ),
     RuGroup(
         "Медиа",
         listOf(
             "kinopoisk", "ivi.client", "rutube", "more.tv", "start.android",
-            "premier.android", "wink.", "zvuk", "boom.android", "zvooq"
+            "premier.android", "wink.", "zvuk", "boom.android", "zvooq",
+            "okko", "kion", "wink.rt", "tv1000"
         ),
-        listOf("кинопоиск", "ivi", "rutube", "Wink", "звук", "premier")
+        listOf("кинопоиск", "ivi", "rutube", "wink", "звук", "premier", "окко", "kion")
+    ),
+    RuGroup(
+        "Доставка / Ритейл",
+        listOf(
+            "samokat", "magnit", "pyaterochka", "x5.", "lenta.", "deliveryclub",
+            "dc.client", "chibbis", "vkusvill", "perekrestok", "kuper", "sbermarket"
+        ),
+        listOf("самокат", "магнит", "пятёрочка", "лента", "delivery club", "вкусвилл", "перекрёсток", "сбермаркет", "купер")
     ),
     RuGroup(
         "Прочее RU",
         listOf(
-            "rustore", "vk.store", "sberbank.sberdevices", "salute",
-            "beru.", "delivery club", "dc.client", "samokat", "magnit",
-            "pyaterochka", "x5.", "lenta.", "okko", "kion"
+            "rustore", "vk.store", "sberdevices", "salute", "beru.",
+            "rzd.passengers", "russianpost", "pochta", "gosuslugi",
+            "sovcombank", "tinkoff", "2gis"
         ),
-        listOf("rustore", "сбердевайс", "самокат", "магнит", "пятёрочка", "лента", "окко", "kion")
+        listOf("rustore", "сбердевайс", "ржд", "почта россии")
     ),
 )
 
 private fun matchGroup(app: AppProxyItem, group: RuGroup): Boolean {
+    if (isBlockedForeign(app.packageName)) return false
     val p = app.packageName.lowercase()
     val n = app.appName.lowercase()
-    if (group.packageNeedles.any { p.contains(it.lowercase()) }) return true
-    if (group.nameNeedles.any { n.contains(it.lowercase()) }) return true
+    if (group.packageNeedles.any { needle ->
+            val k = needle.lowercase()
+            p == k || p.startsWith("$k.") || p.contains(k)
+        }) return true
+    // Name match only if package looks local (ru./or known) — avoids "Калькулятор" etc.
+    if (group.nameNeedles.any { n.contains(it.lowercase()) }) {
+        if (p.startsWith("ru.") || p.contains(".ru.") || !isBlockedForeign(p)) {
+            // still require at least one package needle-ish or ru. prefix for pure name hits
+            if (p.startsWith("ru.") || p.startsWith("com.yandex") || p.startsWith("com.vk") ||
+                p.contains("yandex") || p.contains("ozon") || p.contains("wildberries") ||
+                p.contains("sber") || p.contains("tinkoff") || p.contains("gosuslugi") ||
+                p.contains("avito") || p.contains("mail") || p.contains("vkontakte")
+            ) return true
+        }
+    }
     return false
 }
 
@@ -146,14 +204,15 @@ private fun collectRuApps(installed: List<AppProxyItem>): List<Pair<String, List
             out += g.title to found
         }
     }
-    // Catch-all: remaining with .ru TLD-style packages or cyrillic names
+    // Strict catch-all: only ru.* packages not foreign-blocked and not already listed
     val rest = installed.filter { app ->
-        app.packageName !in used && (
-            app.packageName.startsWith("ru.") ||
-                app.appName.any { it in '\u0400'..'\u04FF' }
-            )
+        app.packageName !in used &&
+            !isBlockedForeign(app.packageName) &&
+            app.packageName.lowercase().startsWith("ru.") &&
+            // skip pure system-ish short tools under ru.android if any
+            !app.packageName.lowercase().startsWith("ru.android.")
     }.sortedBy { it.appName.lowercase() }
-    if (rest.isNotEmpty()) out += "Другие RU" to rest.take(80)
+    if (rest.isNotEmpty()) out += "Другие RU" to rest.take(100)
     return out
 }
 
