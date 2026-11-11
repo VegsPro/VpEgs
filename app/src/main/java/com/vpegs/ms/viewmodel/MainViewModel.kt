@@ -930,13 +930,17 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
             .followRedirects(true)
             .followSslRedirects(true)
             .build()
-        // Alius and similar panels vary body by User-Agent
+        // Atlanta / Alius panels change body by UA: v2rayNG often gets HWID stub (127.0.0.1),
+        // Happ gets full Xray JSON. Prefer Happ-like agents first.
         val agents = listOf(
-            "v2rayNG/1.8.19",
+            "Happ/1.0",
             "Happ/1.0.0",
+            "v2rayNG/1.8.19",
             "clash-meta/1.0",
             "Mozilla/5.0"
         )
+        var best: FetchResult? = null
+        var bestScore = -1
         var lastError: Exception? = null
         for (ua in agents) {
             try {
@@ -986,26 +990,68 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                         else announceRaw
                     } catch (_: Exception) { announceRaw }
                     val interval = hdr("profile-update-interval").toIntOrNull() ?: 6
-                    // Prefer bodies that look like configs / link lists
-                    val trimmed = body.trim()
-                    val looksUseful = trimmed.startsWith("[") || trimmed.startsWith("{") ||
-                        "vless://" in trimmed || "vmess://" in trimmed ||
-                        "trojan://" in trimmed || "ss://" in trimmed ||
-                        trimmed.length > 80
-                    if (!looksUseful && ua != agents.last()) {
-                        throw IllegalStateException("body not useful for $ua")
-                    }
-                    return FetchResult(
+                    val fr = FetchResult(
                         body = body, upload = up, download = down, total = total, expire = exp,
                         title = title, announce = announce, webPage = hdr("profile-web-page-url"),
                         updateInterval = interval
                     )
+                    val score = scoreSubscriptionBody(body)
+                    if (score > bestScore) {
+                        bestScore = score
+                        best = fr
+                    }
+                    // Good enough (full JSON or many real links) — stop early
+                    if (score >= 50) return fr
                 }
             } catch (e: Exception) {
                 lastError = e
             }
         }
+        if (best != null && bestScore > 0) return best
         throw lastError ?: IllegalStateException("subscription fetch failed")
+    }
+
+    /** Higher = more likely real nodes, not HWID/client stub. */
+    private fun scoreSubscriptionBody(body: String): Int {
+        val trimmed = body.trim()
+        if (trimmed.isEmpty()) return 0
+        // Full Xray JSON array (Alius / Atlanta for Happ UA)
+        if (trimmed.startsWith("[")) {
+            val n = Regex("\"remarks\"").findAll(trimmed).count()
+            return 80 + n.coerceAtMost(40)
+        }
+        if (trimmed.startsWith("{") && "outbounds" in trimmed) return 60
+        var text = trimmed
+        // Base64 list of links
+        if (!trimmed.contains("://") && trimmed.length > 40) {
+            try {
+                val decoded = String(
+                    android.util.Base64.decode(trimmed, android.util.Base64.DEFAULT)
+                )
+                text = decoded
+            } catch (_: Exception) {
+                try {
+                    val decoded = String(
+                        android.util.Base64.decode(trimmed, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
+                    )
+                    text = decoded
+                } catch (_: Exception) {}
+            }
+        }
+        val low = text.lowercase()
+        val linkCount = listOf("vless://", "vmess://", "trojan://", "ss://", "hysteria2://")
+            .sumOf { p -> Regex(Regex.escape(p)).findAll(low).count() }
+        if (linkCount == 0) {
+            return if (trimmed.length > 80) 5 else 0
+        }
+        // Atlanta stub: only 127.0.0.1 / 0.0.0.0 placeholders
+        val stubHosts = listOf("127.0.0.1", "0.0.0.0", "[::1]")
+        val onlyStub = stubHosts.any { it in text } &&
+            !Regex("""@((?!127\.0\.0\.1)(?!0\.0\.0\.0)[a-zA-Z0-9.\-\[\]:]+)""").containsMatchIn(text)
+        if (onlyStub || ("не поддерживается" in text.lowercase()) || ("not support" in low)) {
+            return 1
+        }
+        return 20 + linkCount.coerceAtMost(30)
     }
 
     fun updateSubscription(id: String, name: String, url: String) {
