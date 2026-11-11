@@ -168,6 +168,37 @@ fun VpEgsApp(vm: MainViewModel) {
                     }
                 }
             )
+
+            if (vm.showHwidPrompt) {
+                AlertDialog(
+                    onDismissRequest = { vm.dismissHwidPrompt() },
+                    title = { Text("Нужен HWID", color = GlassText) },
+                    text = {
+                        Text(
+                            "Панель вернула заглушку вместо серверов (часто Atlanta и подписки с привязкой к устройству).\n\n" +
+                                "Включите «Отправка HWID» в Настройках и обновите подписку — тогда список должен открыться, как в INCY.",
+                            color = GlassTextMuted
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                vm.updateSendHwid(true)
+                                vm.dismissHwidPrompt()
+                                nav.navigate(Screen.Settings.route) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        ) { Text("В настройки", color = GlassPrimary) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { vm.dismissHwidPrompt() }) {
+                            Text("Позже", color = GlassTextMuted)
+                        }
+                    },
+                    containerColor = if (GlassIsLight) Color.White else GlassSurfaceHigh
+                )
+            }
         }
     }
 }

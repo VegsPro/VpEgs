@@ -109,6 +109,30 @@ fun SettingsScreen(vm: MainViewModel) {
                     onCheckedChange = { vm.updateGlassEffect(it) }
                 )
             }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = GlassBorder)
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Отправка HWID", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text(
+                        "Для подписок с привязкой к устройству (Atlanta и др.). По умолчанию выкл.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTextMuted
+                    )
+                    if (vm.sendHwid) {
+                        Text(
+                            "ID: ${com.vpegs.ms.core.HwidHelper.shortId(ctx)}…",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassAccent
+                        )
+                    }
+                }
+                GlassSwitch(
+                    checked = vm.sendHwid,
+                    onCheckedChange = { vm.updateSendHwid(it) }
+                )
+            }
         }
 
 

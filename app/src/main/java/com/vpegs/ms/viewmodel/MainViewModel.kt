@@ -161,6 +161,8 @@ class MainViewModel : ViewModel() {
     var showServerIp by mutableStateOf(true)
         private set
     var glassEffect by mutableStateOf(true)
+    var sendHwid by mutableStateOf(false)
+    var showHwidPrompt by mutableStateOf(false)
         private set
 
     val filteredServers: List<ServerNode>
@@ -200,6 +202,7 @@ class MainViewModel : ViewModel() {
             showServerProtocol = Prefs.loadShowServerProtocol(ctx)
             showServerIp = Prefs.loadShowServerIp(ctx)
             glassEffect = Prefs.loadGlassEffect(ctx)
+            sendHwid = Prefs.loadSendHwid(ctx)
             showBuiltinServers = Prefs.loadShowBuiltin(ctx)
             expandedSubIds = Prefs.loadExpandedSubs(ctx)
             bestAllowRu = Prefs.loadBestAllowRu(ctx)
@@ -808,6 +811,12 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
         glassEffect = v
         appContext?.let { Prefs.saveGlassEffect(it, v) }
     }
+    fun updateSendHwid(v: Boolean) {
+        sendHwid = v
+        appContext?.let { Prefs.saveSendHwid(it, v) }
+        if (v) showHwidPrompt = false
+    }
+    fun dismissHwidPrompt() { showHwidPrompt = false }
 
     fun updateThemeId(id: com.vpegs.ms.ui.theme.AppThemeId) {
         themeId = id
@@ -893,9 +902,18 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                 } else {
                     persist()
                 }
-                workStatus = "Подписка: ${nodes.size} серверов"
+                val stub = com.vpegs.ms.core.HwidHelper.isStubSubscriptionBody(body) ||
+                    (nodes.isNotEmpty() && nodes.all {
+                        it.address in setOf("127.0.0.1", "0.0.0.0", "—", "", "[::1]")
+                    })
+                if (stub && !sendHwid) {
+                    showHwidPrompt = true
+                    workStatus = "Заглушка · включите HWID в Настройках"
+                } else {
+                    workStatus = "Подписка: ${nodes.size} серверов"
+                }
                 workProgress = 1f
-                delay(900)
+                delay(1600)
                 workStatus = ""
                 workProgress = 0f
             } catch (e: Exception) {
@@ -932,24 +950,25 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
             .build()
         // Atlanta / Alius panels change body by UA: v2rayNG often gets HWID stub (127.0.0.1),
         // Happ gets full Xray JSON. Prefer Happ-like agents first.
-        val agents = listOf(
-            "Happ/1.0",
-            "Happ/1.0.0",
-            "v2rayNG/1.8.19",
-            "clash-meta/1.0",
-            "Mozilla/5.0"
-        )
+        val ctx = appContext
+        val hwidOn = sendHwid && ctx != null
+        val hwidHeaders = if (hwidOn) com.vpegs.ms.core.HwidHelper.requestHeaders(ctx!!) else emptyMap()
+        val agents = if (hwidOn) {
+            listOf("INCY/3.7.0", "Happ/1.0", "Happ/1.0.0", "v2rayNG/1.8.19", "FoXray")
+        } else {
+            listOf("Happ/1.0", "Happ/1.0.0", "v2rayNG/1.8.19", "clash-meta/1.0", "Mozilla/5.0")
+        }
         var best: FetchResult? = null
         var bestScore = -1
         var lastError: Exception? = null
         for (ua in agents) {
             try {
-                val req = okhttp3.Request.Builder()
+                val rb = okhttp3.Request.Builder()
                     .url(url)
                     .header("User-Agent", ua)
                     .header("Accept", "*/*")
-                    .get()
-                    .build()
+                hwidHeaders.forEach { (k, v) -> rb.header(k, v) }
+                val req = rb.get().build()
                 client.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
                     val body = resp.body?.string() ?: ""
@@ -1104,7 +1123,16 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                     selectedWasThis && nodes.isNotEmpty() -> selectServer(nodes.first())
                     else -> persist()
                 }
-                workStatus = "Подписка обновлена · ${nodes.size} серверов"
+                val stub = com.vpegs.ms.core.HwidHelper.isStubSubscriptionBody(fr.body) ||
+                    (nodes.isNotEmpty() && nodes.all {
+                        it.address in setOf("127.0.0.1", "0.0.0.0", "—", "", "[::1]")
+                    })
+                if (stub && !sendHwid) {
+                    showHwidPrompt = true
+                    workStatus = "Заглушка · включите HWID в Настройках"
+                } else {
+                    workStatus = "Подписка обновлена · ${nodes.size} серверов"
+                }
                 workProgress = 1f
                 delay(1000)
                 workStatus = ""

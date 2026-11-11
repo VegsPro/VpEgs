@@ -208,6 +208,11 @@ object Prefs {
     }
     fun loadGlassEffect(ctx: Context): Boolean = sp(ctx).getBoolean("glass_effect", true)
 
+    fun saveSendHwid(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("send_hwid", enabled).apply()
+    }
+    fun loadSendHwid(ctx: Context): Boolean = sp(ctx).getBoolean("send_hwid", false)
+
     fun saveSubOrder(ctx: Context, ids: List<String>) {
         sp(ctx).edit().putString("sub_order", ids.joinToString("|")).apply()
     }
