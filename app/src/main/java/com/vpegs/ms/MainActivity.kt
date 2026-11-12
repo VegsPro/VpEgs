@@ -169,12 +169,20 @@ fun VpEgsApp(vm: MainViewModel) {
                 }
             )
 
-            if (vm.showHwidPrompt) {
+            AnimatedVisibility(
+                visible = vm.showHwidPrompt,
+                enter = fadeIn(tween(220)) + slideInVertically(tween(280)) { it / 3 },
+                exit = fadeOut(tween(180)) + slideOutVertically(tween(240)) { it / 3 },
+                modifier = Modifier.fillMaxSize()
+            ) {
                 Box(
                     Modifier
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.35f))
-                        .clickable { vm.dismissHwidPrompt() }
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { vm.dismissHwidPrompt() }
                 ) {
                     Column(
                         Modifier
@@ -185,6 +193,10 @@ fun VpEgsApp(vm: MainViewModel) {
                             .background(if (GlassIsLight) Color.White else GlassSurfaceHigh)
                             .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
                             .padding(16.dp)
+                            .animateEnterExit(
+                                enter = slideInVertically(tween(320)) { it } + fadeIn(tween(280)),
+                                exit = slideOutVertically(tween(220)) { it } + fadeOut(tween(160))
+                            )
                     ) {
                         Text(
                             "Серверов 0, попробуйте включить HWID",
