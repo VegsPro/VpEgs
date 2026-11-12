@@ -250,7 +250,7 @@ private fun DragReorderSubsList(vm: MainViewModel) {
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(sub.name, color = GlassText, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(sub.name, color = GlassText, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("${sub.serversCount} серверов", color = GlassTextMuted, style = MaterialTheme.typography.labelSmall)
                 }
             }
@@ -280,10 +280,22 @@ private fun SubHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(sub.name, color = GlassText, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(
+                sub.name,
+                color = GlassText,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             Text("$count серверов", color = GlassTextMuted, style = MaterialTheme.typography.labelMedium)
             if (sub.announce.isNotBlank()) {
-                Text(sub.announce, color = GlassAccent.copy(0.9f), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                Text(
+                    sub.announce,
+                    color = GlassAccent.copy(0.9f),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
         IconButton(onClick = onPing, enabled = !isPinging) {
