@@ -116,7 +116,7 @@ fun SettingsScreen(vm: MainViewModel) {
                 Column(Modifier.weight(1f)) {
                     Text("Отправка HWID", style = MaterialTheme.typography.bodyLarge, color = GlassText)
                     Text(
-                        "Для подписок с привязкой к устройству (Atlanta и др.). По умолчанию выкл.",
+                        "Для подписок с привязкой к устройству. По умолчанию выкл.",
                         style = MaterialTheme.typography.labelMedium,
                         color = GlassTextMuted
                     )

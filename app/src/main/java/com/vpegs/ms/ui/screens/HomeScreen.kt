@@ -220,6 +220,34 @@ fun HomeScreen(vm: MainViewModel) {
                 onClick = { vm.selectBestServer(activity) },
                 onLongClick = { vm.showBestSettings = true }
             )
+            ActionChip(
+                label = "🏳️ БС",
+                loading = vm.whitelistChecking,
+                onClick = { vm.checkRussianWhitelist() }
+            )
+        }
+        if (vm.whitelistStatus != null || vm.whitelistChecking) {
+            Spacer(Modifier.height(10.dp))
+            GlassCard(Modifier.fillMaxWidth()) {
+                val title = when (vm.whitelistStatus) {
+                    "active" -> "Белые списки: похоже включены"
+                    "inactive" -> "Белые списки: не обнаружены"
+                    "no_network" -> "Нет сети для проверки"
+                    "error" -> "Ошибка проверки"
+                    else -> "Проверка белых списков…"
+                }
+                val color = when (vm.whitelistStatus) {
+                    "active" -> GlassWarning
+                    "inactive" -> GlassAccent
+                    "no_network", "error" -> GlassDanger
+                    else -> GlassTextMuted
+                }
+                Text(title, style = MaterialTheme.typography.titleSmall, color = color)
+                if (vm.whitelistDetail.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(vm.whitelistDetail, style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+            }
         }
 
         if (vm.showBestSettings) {

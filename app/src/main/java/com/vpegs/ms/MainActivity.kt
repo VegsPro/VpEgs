@@ -170,34 +170,53 @@ fun VpEgsApp(vm: MainViewModel) {
             )
 
             if (vm.showHwidPrompt) {
-                AlertDialog(
-                    onDismissRequest = { vm.dismissHwidPrompt() },
-                    title = { Text("Нужен HWID", color = GlassText) },
-                    text = {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.35f))
+                        .clickable { vm.dismissHwidPrompt() }
+                ) {
+                    Column(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 88.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (GlassIsLight) Color.White else GlassSurfaceHigh)
+                            .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
+                            .padding(16.dp)
+                    ) {
                         Text(
-                            "Панель вернула заглушку вместо серверов (часто Atlanta и подписки с привязкой к устройству).\n\n" +
-                                "Включите «Отправка HWID» в Настройках и обновите подписку — тогда список должен открыться, как в INCY.",
+                            "Серверов 0, попробуйте включить HWID",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GlassText
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Панель вернула заглушку вместо списка серверов. Включите отправку HWID и подписка обновится автоматически.",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = GlassTextMuted
                         )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                vm.updateSendHwid(true)
-                                vm.dismissHwidPrompt()
-                                nav.navigate(Screen.Settings.route) {
-                                    launchSingleTop = true
-                                }
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Отправка HWID", color = GlassText)
+                                Text("Для привязки к устройству", color = GlassTextMuted, style = MaterialTheme.typography.labelMedium)
                             }
-                        ) { Text("В настройки", color = GlassPrimary) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { vm.dismissHwidPrompt() }) {
-                            Text("Позже", color = GlassTextMuted)
+                            Switch(
+                                checked = vm.sendHwid,
+                                onCheckedChange = { on ->
+                                    if (on) vm.enableHwidAndRefresh()
+                                    else vm.updateSendHwid(false)
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = GlassPrimary
+                                )
+                            )
                         }
-                    },
-                    containerColor = if (GlassIsLight) Color.White else GlassSurfaceHigh
-                )
+                    }
+                }
             }
         }
     }

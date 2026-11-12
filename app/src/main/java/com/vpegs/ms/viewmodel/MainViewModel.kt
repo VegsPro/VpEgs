@@ -163,6 +163,12 @@ class MainViewModel : ViewModel() {
     var glassEffect by mutableStateOf(true)
     var sendHwid by mutableStateOf(false)
     var showHwidPrompt by mutableStateOf(false)
+    /** Sub id to refresh after user enables HWID from prompt */
+    var pendingHwidRefreshSubId by mutableStateOf<String?>(null)
+    var whitelistChecking by mutableStateOf(false)
+    /** null=idle, "active"|"inactive"|"no_network"|"error" */
+    var whitelistStatus by mutableStateOf<String?>(null)
+    var whitelistDetail by mutableStateOf("")
         private set
 
     val filteredServers: List<ServerNode>
@@ -534,6 +540,25 @@ class MainViewModel : ViewModel() {
         workProgress = 0f
         viewModelScope.launch {
             try {
+                // Measure from device IP, not through current VPN hop
+                val act = activity
+                if (act != null && (connState == ConnState.CONNECTED || VpEgsVpnService.isConnected)) {
+                    bestScanStatus = "1/4 Отключение VPN для прямого замера…"
+                    workStatus = bestScanStatus
+                    disconnect(act)
+                    var waits = 0
+                    while ((VpEgsVpnService.isConnected ||
+                            connState == ConnState.DISCONNECTING ||
+                            connState == ConnState.CONNECTED) && waits < 25
+                    ) {
+                        delay(200)
+                        waits++
+                    }
+                    delay(400)
+                }
+                bestScanStatus = "1/4 Подготовка списка…"
+                workStatus = bestScanStatus
+
                 var list = servers.toList()
                 if (!bestAllSubs && bestSubIds.isNotEmpty()) {
                     list = list.filter { it.subscriptionId in bestSubIds }
@@ -816,7 +841,74 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
         appContext?.let { Prefs.saveSendHwid(it, v) }
         if (v) showHwidPrompt = false
     }
-    fun dismissHwidPrompt() { showHwidPrompt = false }
+    fun dismissHwidPrompt() {
+        showHwidPrompt = false
+        pendingHwidRefreshSubId = null
+    }
+
+    fun enableHwidAndRefresh() {
+        sendHwid = true
+        appContext?.let { Prefs.saveSendHwid(it, true) }
+        showHwidPrompt = false
+        val id = pendingHwidRefreshSubId
+        pendingHwidRefreshSubId = null
+        if (id != null) refreshSubscription(id)
+    }
+
+    fun checkRussianWhitelist() {
+        if (whitelistChecking) return
+        whitelistChecking = true
+        whitelistStatus = null
+        whitelistDetail = "Проверка…"
+        viewModelScope.launch {
+            try {
+                val ctx = appContext
+                // Direct path: drop VPN so probes use carrier/Wi‑Fi IP
+                val hadVpn = connState == ConnState.CONNECTED || VpEgsVpnService.isConnected
+                if (hadVpn && ctx != null) {
+                    whitelistDetail = "Отключение VPN…"
+                    disconnect(ctx)
+                    var w = 0
+                    while ((VpEgsVpnService.isConnected || connState == ConnState.DISCONNECTING) && w < 20) {
+                        delay(200); w++
+                    }
+                    delay(300)
+                }
+                whitelistDetail = "Запросы к сайтам…"
+                data class Probe(val name: String, val host: String, val port: Int, val local: Boolean)
+                val probes = listOf(
+                    Probe("Google", "google.com", 443, false),
+                    Probe("YouTube", "www.youtube.com", 443, false),
+                    Probe("Yandex", "yandex.ru", 443, true),
+                    Probe("VK", "vk.com", 443, true)
+                )
+                val results = withContext(Dispatchers.IO) {
+                    probes.map { p ->
+                        val ms = tcpPing(p.host, p.port, 2500)
+                        p to ms
+                    }
+                }
+                val foreignOk = results.filter { !it.first.local }.count { it.second != null }
+                val localOk = results.filter { it.first.local }.count { it.second != null }
+                val detail = results.joinToString(" · ") { (p, ms) ->
+                    "${p.name}: ${if (ms != null) "${ms}ms" else "нет"}"
+                }
+                whitelistDetail = detail
+                whitelistStatus = when {
+                    localOk == 0 && foreignOk == 0 -> "no_network"
+                    localOk > 0 && foreignOk == 0 -> "active"
+                    localOk > 0 && foreignOk > 0 -> "inactive"
+                    foreignOk > 0 && localOk == 0 -> "inactive"
+                    else -> "error"
+                }
+            } catch (e: Exception) {
+                whitelistStatus = "error"
+                whitelistDetail = e.message?.take(60) ?: "ошибка"
+            } finally {
+                whitelistChecking = false
+            }
+        }
+    }
 
     fun updateThemeId(id: com.vpegs.ms.ui.theme.AppThemeId) {
         themeId = id
@@ -907,8 +999,9 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                         it.address in setOf("127.0.0.1", "0.0.0.0", "—", "", "[::1]")
                     })
                 if (stub && !sendHwid) {
+                    pendingHwidRefreshSubId = subId
                     showHwidPrompt = true
-                    workStatus = "Заглушка · включите HWID в Настройках"
+                    workStatus = "Серверов 0, попробуйте включить HWID"
                 } else {
                     workStatus = "Подписка: ${nodes.size} серверов"
                 }
@@ -1128,8 +1221,9 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                         it.address in setOf("127.0.0.1", "0.0.0.0", "—", "", "[::1]")
                     })
                 if (stub && !sendHwid) {
+                    pendingHwidRefreshSubId = id
                     showHwidPrompt = true
-                    workStatus = "Заглушка · включите HWID в Настройках"
+                    workStatus = "Серверов 0, попробуйте включить HWID"
                 } else {
                     workStatus = "Подписка обновлена · ${nodes.size} серверов"
                 }
