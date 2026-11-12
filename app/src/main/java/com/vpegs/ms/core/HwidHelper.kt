@@ -114,13 +114,13 @@ object HwidHelper {
         }
         // JSON array without any usable proxy address
         if (t.startsWith("[")) {
-            val hasVnext = ""vnext"" in t
-            val hasServers = ""servers"" in t
+            val hasVnext = "\"vnext\"" in t
+            val hasServers = "\"servers\"" in t
             val realAddr = Regex(
                 """"address"\s*:\s*"(?!0\.0\.0\.0)(?!127\.0\.0\.1)(?!::1)[^"]{3,}""""
             ).containsMatchIn(t)
             if ((hasVnext || hasServers) && !realAddr) return true
-            if (!hasVnext && !hasServers && ""remarks"" in t) return true
+            if (!hasVnext && !hasServers && "\"remarks\"" in t) return true
         }
         return false
     }
