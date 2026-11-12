@@ -97,33 +97,30 @@ object HwidHelper {
             }
         }
         val low = text.lowercase()
-        if ("не поддерживается" in low || "not support" in low || "предел количества устройств" in low) {
+        if ("не поддерживается" in low || "not support" in low ||
+            "предел количества устройств" in low || "достигнут предел" in low
+        ) {
             return true
         }
-        if ("0.0.0.0" in text || "127.0.0.1" in text) {
-            // real host somewhere?
-            val hasReal = Regex(
+        // Share-link stubs
+        if ("0.0.0.0" in text || "127.0.0.1" in text || "[::1]" in text) {
+            val hasRealHost = Regex(
                 """@((?!127\.0\.0\.1)(?!0\.0\.0\.0)(?!\[::1\])[a-zA-Z0-9.\-\[\]:]+)"""
             ).containsMatchIn(text)
-            if (!hasReal) return true
+            val hasRealJsonAddr = Regex(
+                """"address"\s*:\s*"(?!0\.0\.0\.0)(?!127\.0\.0\.1)(?!::1)[^"]{3,}""""
+            ).containsMatchIn(text)
+            if (!hasRealHost && !hasRealJsonAddr) return true
         }
-        // JSON array of only section headers / empty proxy outbounds
+        // JSON array without any usable proxy address
         if (t.startsWith("[")) {
-            val remarks = Regex(""""remarks"\s*:\s*"([^"]*)"""").findAll(t).map { it.groupValues[1] }.toList()
-            if (remarks.isNotEmpty() &&
-                remarks.all {
-                    it.contains("не поддерживается", true) ||
-                        it.contains("ОСНОВНЫЕ", true) ||
-                        it.contains("ОБХОД", true) ||
-                        it.startsWith("━")
-                }
-            ) {
-                // still might have real outbounds — check vnext addresses
-                if ("0.0.0.0" in t && "vnext" in t) {
-                    val realAddr = Regex(""""address"\s*:\s*"(?!0\.0\.0\.0)(?!127\.0\.0\.1)[^"]+"""").containsMatchIn(t)
-                    if (!realAddr) return true
-                }
-            }
+            val hasVnext = ""vnext"" in t
+            val hasServers = ""servers"" in t
+            val realAddr = Regex(
+                """"address"\s*:\s*"(?!0\.0\.0\.0)(?!127\.0\.0\.1)(?!::1)[^"]{3,}""""
+            ).containsMatchIn(t)
+            if ((hasVnext || hasServers) && !realAddr) return true
+            if (!hasVnext && !hasServers && ""remarks"" in t) return true
         }
         return false
     }

@@ -841,6 +841,22 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
         appContext?.let { Prefs.saveSendHwid(it, v) }
         if (v) showHwidPrompt = false
     }
+    
+    private fun maybePromptHwid(subId: String, body: String, nodes: List<com.vpegs.ms.data.ServerNode>): Boolean {
+        if (sendHwid) return false
+        val onlyLocal = nodes.isNotEmpty() && nodes.all {
+            it.address in setOf("127.0.0.1", "0.0.0.0", "—", "", "[::1]")
+        }
+        val stub = nodes.isEmpty() ||
+            onlyLocal ||
+            com.vpegs.ms.core.HwidHelper.isStubSubscriptionBody(body)
+        if (!stub) return false
+        pendingHwidRefreshSubId = subId
+        showHwidPrompt = true
+        workStatus = "Серверов 0, попробуйте включить HWID"
+        return true
+    }
+
     fun dismissHwidPrompt() {
         showHwidPrompt = false
         pendingHwidRefreshSubId = null
@@ -994,15 +1010,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                 } else {
                     persist()
                 }
-                val stub = com.vpegs.ms.core.HwidHelper.isStubSubscriptionBody(body) ||
-                    (nodes.isNotEmpty() && nodes.all {
-                        it.address in setOf("127.0.0.1", "0.0.0.0", "—", "", "[::1]")
-                    })
-                if (stub && !sendHwid) {
-                    pendingHwidRefreshSubId = subId
-                    showHwidPrompt = true
-                    workStatus = "Серверов 0, попробуйте включить HWID"
-                } else {
+                if (!maybePromptHwid(subId, body, nodes)) {
                     workStatus = "Подписка: ${nodes.size} серверов"
                 }
                 workProgress = 1f
@@ -1127,6 +1135,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
     private fun scoreSubscriptionBody(body: String): Int {
         val trimmed = body.trim()
         if (trimmed.isEmpty()) return 0
+        if (com.vpegs.ms.core.HwidHelper.isStubSubscriptionBody(trimmed)) return 1
         // Full Xray JSON array (Alius / Atlanta for Happ UA)
         if (trimmed.startsWith("[")) {
             val n = Regex("\"remarks\"").findAll(trimmed).count()
@@ -1216,15 +1225,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                     selectedWasThis && nodes.isNotEmpty() -> selectServer(nodes.first())
                     else -> persist()
                 }
-                val stub = com.vpegs.ms.core.HwidHelper.isStubSubscriptionBody(fr.body) ||
-                    (nodes.isNotEmpty() && nodes.all {
-                        it.address in setOf("127.0.0.1", "0.0.0.0", "—", "", "[::1]")
-                    })
-                if (stub && !sendHwid) {
-                    pendingHwidRefreshSubId = id
-                    showHwidPrompt = true
-                    workStatus = "Серверов 0, попробуйте включить HWID"
-                } else {
+                if (!maybePromptHwid(id, fr.body, nodes)) {
                     workStatus = "Подписка обновлена · ${nodes.size} серверов"
                 }
                 workProgress = 1f
