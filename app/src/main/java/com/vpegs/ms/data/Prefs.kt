@@ -177,6 +177,28 @@ object Prefs {
             .putString("bypass_pkgs_str", copy.sorted().joinToString("\n"))
             .apply()
     }
+    fun saveDomainBypass(ctx: Context, domains: List<String>) {
+        sp(ctx).edit().putString("domain_bypass", domains.joinToString("\n")).apply()
+    }
+    fun loadDomainBypass(ctx: Context): List<String> {
+        val s = sp(ctx).getString("domain_bypass", "") ?: ""
+        return s.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    }
+
+    fun saveAdBlockPackages(ctx: Context, pkgs: Set<String>) {
+        sp(ctx).edit()
+            .putStringSet("adblock_pkgs", pkgs)
+            .putString("adblock_pkgs_str", pkgs.joinToString("\n"))
+            .apply()
+    }
+    fun loadAdBlockPackages(ctx: Context): Set<String> {
+        val set = sp(ctx).getStringSet("adblock_pkgs", null)
+        if (!set.isNullOrEmpty()) return set
+        val str = sp(ctx).getString("adblock_pkgs_str", null).orEmpty()
+        if (str.isBlank()) return emptySet()
+        return str.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    }
+
     fun loadBypassPackages(ctx: Context): Set<String> {
         val fromSet = sp(ctx).getStringSet("bypass_pkgs", null)?.let { HashSet(it) } ?: HashSet()
         val fromStr = sp(ctx).getString("bypass_pkgs_str", null)

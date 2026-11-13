@@ -17,6 +17,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -269,6 +271,32 @@ fun AppsScreen(vm: MainViewModel) {
             Text("Российские приложения")
         }
 
+        Spacer(Modifier.height(12.dp))
+        DomainBypassSection(vm)
+
+        Spacer(Modifier.height(12.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Text("Блокировка рекламы", style = MaterialTheme.typography.titleMedium, color = GlassText)
+            Text(
+                "Галочка — блокировать известные рекламные домены в трафике через VPN. Нужен реконнект.",
+                style = MaterialTheme.typography.labelMedium,
+                color = GlassTextMuted
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { vm.setAllAdBlock(true) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Блокировать всю", color = GlassText, maxLines = 1) }
+                OutlinedButton(
+                    onClick = { vm.setAllAdBlock(false) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Разблокировать всю", color = GlassText, maxLines = 1) }
+            }
+        }
+
         Spacer(Modifier.height(8.dp))
         Text(
             if (vm.globalProxyMode)
@@ -324,7 +352,7 @@ fun AppsScreen(vm: MainViewModel) {
                 contentPadding = PaddingValues(bottom = 120.dp)
             ) {
                 items(vm.filteredApps, key = { it.packageName }) { app ->
-                    AppRow(app, onToggle = { vm.toggleAppProxy(app.packageName) })
+                    AppRow(app, onToggle = { vm.toggleAppProxy(app.packageName) }, onAdToggle = { vm.toggleAppAdBlock(app.packageName) })
                 }
             }
         }
@@ -447,7 +475,7 @@ private fun RussianAppsDialog(
 }
 
 @Composable
-private fun AppRow(app: AppProxyItem, onToggle: () -> Unit) {
+private fun AppRow(app: AppProxyItem, onToggle: () -> Unit, onAdToggle: () -> Unit) {
     val rowBg = if (GlassIsLight) Color.White.copy(alpha = 0.88f) else GlassSurfaceHigh
     val rowBorder = if (GlassIsLight) Color.Black.copy(alpha = 0.08f) else GlassBorder
     Surface(
@@ -471,6 +499,14 @@ private fun AppRow(app: AppProxyItem, onToggle: () -> Unit) {
                     maxLines = 1
                 )
             }
+            Checkbox(
+                checked = app.adBlockEnabled,
+                onCheckedChange = { onAdToggle() },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = GlassPrimary,
+                    uncheckedColor = GlassTextMuted
+                )
+            )
             Text(
                 if (app.proxyEnabled) "VPN" else "Напрямую",
                 style = MaterialTheme.typography.labelSmall,
@@ -478,6 +514,74 @@ private fun AppRow(app: AppProxyItem, onToggle: () -> Unit) {
             )
             Spacer(Modifier.width(6.dp))
             GlassSwitch(checked = app.proxyEnabled, onCheckedChange = { onToggle() })
+        }
+    }
+}
+
+@Composable
+private fun DomainBypassSection(vm: MainViewModel) {
+    var input by remember { mutableStateOf("") }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Text("Обход доменов", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Text(
+            "domen.ru, https://domen.ru/ — мимо VPN. Иконка 🌐 WEB. Нужен реконнект.",
+            style = MaterialTheme.typography.labelMedium,
+            color = GlassTextMuted
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                placeholder = { Text("example.com", color = GlassTextMuted) },
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = GlassPrimary,
+                    unfocusedBorderColor = GlassBorder,
+                    focusedTextColor = GlassText,
+                    unfocusedTextColor = GlassText,
+                    cursorColor = GlassPrimary
+                )
+            )
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    if (vm.addDomainBypass(input)) input = ""
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
+            ) { Text("Добавить") }
+        }
+        if (vm.domainBypassList.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            vm.domainBypassList.forEach { domain ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(GlassPrimary.copy(0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Outlined.Public, contentDescription = null, tint = GlassPrimary)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(domain, color = GlassText, maxLines = 1)
+                        Text("WEB · напрямую", style = MaterialTheme.typography.labelSmall, color = GlassTextMuted)
+                    }
+                    IconButton(onClick = { vm.removeDomainBypass(domain) }) {
+                        Icon(Icons.Outlined.Delete, null, tint = GlassTextMuted)
+                    }
+                }
+            }
         }
     }
 }

@@ -82,7 +82,14 @@ class VpEgsVpnService : VpnService() {
 
         // 1) Xray SOCKS only (tunFd = 0)
         val adapted = try {
-            TunConfigAdapter.adapt(configJson)
+            val sp = getSharedPreferences("vpegs_data", MODE_PRIVATE)
+            val domains = (sp.getString("domain_bypass", "") ?: "")
+                .lines().map { it.trim() }.filter { it.isNotEmpty() }
+            val adPkgs = sp.getStringSet("adblock_pkgs", emptySet()) ?: emptySet()
+            val adStr = sp.getString("adblock_pkgs_str", null).orEmpty()
+            val adSet = if (adPkgs.isNotEmpty()) adPkgs else adStr.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+            val blockAds = adSet.isNotEmpty()
+            TunConfigAdapter.adapt(configJson, domains, blockAds)
         } catch (e: Exception) {
             fail("adapt: ${e.message}"); stopSelf(); return
         }

@@ -55,7 +55,14 @@ data class AppProxyItem(
     val appName: String,
     val isSystem: Boolean = false,
     val proxyEnabled: Boolean = true,
+    /** Block known ad domains for traffic of this app when it goes through VPN. */
+    val adBlockEnabled: Boolean = false,
     val icon: Drawable? = null
+)
+
+/** Domain that should go direct (bypass VPN). Shown in Apps as WEB. */
+data class DomainBypassItem(
+    val domain: String
 )
 
 @Immutable

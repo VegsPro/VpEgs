@@ -112,6 +112,7 @@ class MainViewModel : ViewModel() {
 
 
     var appProxyList by mutableStateOf<List<AppProxyItem>>(emptyList())
+    var domainBypassList by mutableStateOf<List<String>>(emptyList())
         private set
     var appsLoading by mutableStateOf(false)
         private set
@@ -209,6 +210,7 @@ class MainViewModel : ViewModel() {
             showServerIp = Prefs.loadShowServerIp(ctx)
             glassEffect = Prefs.loadGlassEffect(ctx)
             sendHwid = Prefs.loadSendHwid(ctx)
+            domainBypassList = Prefs.loadDomainBypass(ctx)
             showBuiltinServers = Prefs.loadShowBuiltin(ctx)
             expandedSubIds = Prefs.loadExpandedSubs(ctx)
             bestAllowRu = Prefs.loadBestAllowRu(ctx)
@@ -1404,6 +1406,48 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
 
     fun updateAppSearch(q: String) { appSearch = q }
 
+    fun addDomainBypass(raw: String): Boolean {
+        val d = com.vpegs.ms.core.TunConfigAdapter.normalizeDomain(raw)
+        if (d.isBlank()) return false
+        if (d in domainBypassList) return true
+        domainBypassList = domainBypassList + d
+        appContext?.let { Prefs.saveDomainBypass(it, domainBypassList) }
+        if (connState == ConnState.CONNECTED) {
+            // soft hint — full effect after reconnect
+            lastError = "Домен $d · переподключите VPN"
+        }
+        return true
+    }
+
+    fun removeDomainBypass(domain: String) {
+        domainBypassList = domainBypassList.filter { it != domain }
+        appContext?.let { Prefs.saveDomainBypass(it, domainBypassList) }
+        if (connState == ConnState.CONNECTED) {
+            lastError = "Домен убран · переподключите VPN"
+        }
+    }
+
+    fun toggleAppAdBlock(pkg: String) {
+        appProxyList = appProxyList.map {
+            if (it.packageName == pkg) it.copy(adBlockEnabled = !it.adBlockEnabled) else it
+        }
+        persistAdBlock()
+    }
+
+    fun setAllAdBlock(enabled: Boolean) {
+        appProxyList = appProxyList.map { it.copy(adBlockEnabled = enabled) }
+        persistAdBlock()
+    }
+
+    private fun persistAdBlock() {
+        val pkgs = appProxyList.filter { it.adBlockEnabled }.map { it.packageName }.toSet()
+        appContext?.let { Prefs.saveAdBlockPackages(it, pkgs) }
+        if (connState == ConnState.CONNECTED) {
+            lastError = if (pkgs.isEmpty()) "Реклама: выкл · переподключите VPN"
+            else "Реклама: ${pkgs.size} прилож. · переподключите VPN"
+        }
+    }
+
     fun loadInstalledApps(context: Context) {
         if (appsLoading) return
         appsLoading = true
@@ -1413,6 +1457,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                     val pm = context.packageManager
                     val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
                     val bypass = Prefs.loadBypassPackages(context)
+                    val adblock = Prefs.loadAdBlockPackages(context)
                     apps
                         .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
                         .map { ai ->
@@ -1425,6 +1470,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                                 isSystem = isSystem,
                                 // false = bypass VPN (direct)
                                 proxyEnabled = ai.packageName !in bypass,
+                                adBlockEnabled = ai.packageName in adblock,
                                 icon = icon
                             )
                         }
