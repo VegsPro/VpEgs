@@ -1,5 +1,10 @@
 package com.vpegs.ms.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -554,7 +559,12 @@ private fun DomainBypassSection(vm: MainViewModel) {
                 colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
             ) { Text("Добавить") }
         }
-        if (vm.domainBypassList.isNotEmpty()) {
+        AnimatedVisibility(
+            visible = vm.domainBypassList.isNotEmpty(),
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Column {
             Spacer(Modifier.height(10.dp))
             vm.domainBypassList.forEach { domain ->
                 Row(
@@ -582,7 +592,8 @@ private fun DomainBypassSection(vm: MainViewModel) {
                     }
                 }
             }
-        }
+            } // Column
+        } // AnimatedVisibility
     }
 }
 
