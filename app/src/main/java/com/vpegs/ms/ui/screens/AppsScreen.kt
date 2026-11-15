@@ -358,14 +358,31 @@ fun AppsScreen(vm: MainViewModel) {
                 }
 
                 item(key = "count") {
-                    Text(
-                        "${vm.filteredApps.size} приложений",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GlassTextMuted
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "${vm.filteredApps.size} приложений",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassTextMuted,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "Тип подключения",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassTextMuted,
+                            modifier = Modifier.padding(end = 10.dp)
+                        )
+                        Text(
+                            "Обход рекламы",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassTextMuted
+                        )
+                    }
                 }
 
-                items(vm.filteredApps, key = { it.packageName }) { app ->
+                items(vm.filteredApps, key = { it.packageName }, contentType = { "app" }) { app ->
                     AppRow(
                         app = app,
                         onToggle = { vm.toggleAppProxy(app.packageName) },
@@ -539,7 +556,7 @@ private fun RussianAppsDialog(
                                         checkmarkColor = if (GlassIsLight) Color.White else GlassText
                                     )
                                 )
-                                AppIcon(app.icon)
+                                AppIcon(app.packageName)
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(
@@ -587,20 +604,30 @@ private fun AppRow(app: AppProxyItem, onToggle: () -> Unit, onAdToggle: () -> Un
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AppIcon(app.icon)
-            Spacer(Modifier.width(12.dp))
+            AppIcon(app.packageName)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(app.appName, style = MaterialTheme.typography.bodyLarge, color = GlassText, maxLines = 1)
                 Text(
                     if (app.isSystem) "Системное" else app.packageName,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = GlassTextMuted,
                     maxLines = 1
                 )
             }
+            // [ switch | checkbox ]  — type then ad-block
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    if (app.proxyEnabled) "VPN" else "Direct",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (app.proxyEnabled) GlassPrimary else GlassTextMuted
+                )
+                GlassSwitch(checked = app.proxyEnabled, onCheckedChange = { onToggle() })
+            }
+            Spacer(Modifier.width(4.dp))
             Checkbox(
                 checked = app.adBlockEnabled,
                 onCheckedChange = { onAdToggle() },
@@ -609,33 +636,33 @@ private fun AppRow(app: AppProxyItem, onToggle: () -> Unit, onAdToggle: () -> Un
                     uncheckedColor = GlassTextMuted
                 )
             )
-            Text(
-                if (app.proxyEnabled) "VPN" else "Напрямую",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (app.proxyEnabled) GlassPrimary else GlassTextMuted
-            )
-            Spacer(Modifier.width(6.dp))
-            GlassSwitch(checked = app.proxyEnabled, onCheckedChange = { onToggle() })
         }
     }
 }
 
 @Composable
-private fun AppIcon(drawable: Drawable?) {
-    val bmp = remember(drawable) { drawable?.toBitmapCompat(96) }
+private fun AppIcon(packageName: String) {
+    val context = LocalContext.current
+    val bmp = remember(packageName) {
+        try {
+            context.packageManager.getApplicationIcon(packageName).toBitmapCompat(72)
+        } catch (_: Exception) {
+            null
+        }
+    }
     if (bmp != null) {
         Image(
             bitmap = bmp.asImageBitmap(),
             contentDescription = null,
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(36.dp)
+                .clip(RoundedCornerShape(8.dp))
         )
     } else {
         Box(
             Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(36.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .background(GlassPrimary.copy(0.15f))
         )
     }

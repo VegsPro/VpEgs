@@ -1463,7 +1463,6 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                         .map { ai ->
                             val isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
                             val name = try { pm.getApplicationLabel(ai).toString() } catch (_: Exception) { ai.packageName }
-                            val icon = try { pm.getApplicationIcon(ai) } catch (_: Exception) { null }
                             AppProxyItem(
                                 packageName = ai.packageName,
                                 appName = name,
@@ -1471,7 +1470,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                                 // false = bypass VPN (direct)
                                 proxyEnabled = ai.packageName !in bypass,
                                 adBlockEnabled = ai.packageName in adblock,
-                                icon = icon
+                                icon = null
                             )
                         }
                         .sortedWith(compareBy({ it.isSystem }, { it.appName.lowercase() }))
