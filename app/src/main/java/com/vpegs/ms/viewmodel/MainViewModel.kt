@@ -113,6 +113,10 @@ class MainViewModel : ViewModel() {
 
     var appProxyList by mutableStateOf<List<AppProxyItem>>(emptyList())
     var domainBypassList by mutableStateOf<List<String>>(emptyList())
+    var adWhitelist by mutableStateOf<List<String>>(emptyList())
+    var adListInfo by mutableStateOf("список: встроенный")
+    var adListUpdating by mutableStateOf(false)
+
         private set
     var appsLoading by mutableStateOf(false)
         private set
@@ -211,6 +215,8 @@ class MainViewModel : ViewModel() {
             glassEffect = Prefs.loadGlassEffect(ctx)
             sendHwid = Prefs.loadSendHwid(ctx)
             domainBypassList = Prefs.loadDomainBypass(ctx)
+            adWhitelist = Prefs.loadAdWhitelist(ctx)
+            adListInfo = com.vpegs.ms.core.AdBlockEngine.lastUpdateInfo(ctx)
             showBuiltinServers = Prefs.loadShowBuiltin(ctx)
             expandedSubIds = Prefs.loadExpandedSubs(ctx)
             bestAllowRu = Prefs.loadBestAllowRu(ctx)
@@ -1405,6 +1411,42 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
 
 
     fun updateAppSearch(q: String) { appSearch = q }
+
+    fun addAdWhitelist(raw: String): Boolean {
+        val d = com.vpegs.ms.core.TunConfigAdapter.normalizeDomain(raw)
+        if (d.isBlank()) return false
+        if (d in adWhitelist) return true
+        adWhitelist = adWhitelist + d
+        appContext?.let { Prefs.saveAdWhitelist(it, adWhitelist) }
+        if (connState == ConnState.CONNECTED) lastError = "Whitelist · реконнект VPN"
+        return true
+    }
+
+    fun removeAdWhitelist(domain: String) {
+        adWhitelist = adWhitelist.filter { it != domain }
+        appContext?.let { Prefs.saveAdWhitelist(it, adWhitelist) }
+        if (connState == ConnState.CONNECTED) lastError = "Whitelist · реконнект VPN"
+    }
+
+    fun updateAdBlockLists() {
+        val ctx = appContext ?: return
+        if (adListUpdating) return
+        adListUpdating = true
+        viewModelScope.launch {
+            try {
+                val n = withContext(Dispatchers.IO) {
+                    com.vpegs.ms.core.AdBlockEngine.updateLists(ctx)
+                }
+                adListInfo = com.vpegs.ms.core.AdBlockEngine.lastUpdateInfo(ctx)
+                lastError = if (n < 0) "Не удалось скачать списки рекламы"
+                else "Списки рекламы: $n доменов · реконнект VPN"
+            } catch (e: Exception) {
+                lastError = "Списки: ${e.message?.take(80)}"
+            } finally {
+                adListUpdating = false
+            }
+        }
+    }
 
     fun addDomainBypass(raw: String): Boolean {
         val d = com.vpegs.ms.core.TunConfigAdapter.normalizeDomain(raw)

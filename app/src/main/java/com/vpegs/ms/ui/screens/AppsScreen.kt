@@ -306,10 +306,16 @@ fun AppsScreen(vm: MainViewModel) {
                 item(key = "ads") {
                     CompactExpandCard(
                         title = "Реклама",
-                        subtitle = "галочка у приложения · через VPN",
+                        subtitle = vm.adListInfo,
                         expanded = showAds,
                         onToggle = { showAds = !showAds }
                     ) {
+                        Text(
+                            "Сетевой блок (DNS + geosite + списки). Не MITM как AdGuard.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassTextMuted
+                        )
+                        Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(
                                 onClick = { vm.setAllAdBlock(true) },
@@ -323,6 +329,63 @@ fun AppsScreen(vm: MainViewModel) {
                                 shape = RoundedCornerShape(10.dp),
                                 contentPadding = PaddingValues(vertical = 6.dp)
                             ) { Text("Все выкл", color = GlassText, style = MaterialTheme.typography.labelLarge) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { vm.updateAdBlockLists() },
+                            enabled = !vm.adListUpdating,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
+                        ) {
+                            if (vm.adListUpdating) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.White
+                                )
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text(if (vm.adListUpdating) "Обновление…" else "Обновить списки блокировки")
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Text("Белый список (не блокировать)", style = MaterialTheme.typography.labelMedium, color = GlassText)
+                        var wl by remember { mutableStateOf("") }
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = wl,
+                                onValueChange = { wl = it },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                placeholder = { Text("example.com", color = GlassTextMuted) },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = GlassPrimary,
+                                    unfocusedBorderColor = GlassBorder,
+                                    focusedTextColor = GlassText,
+                                    unfocusedTextColor = GlassText,
+                                    cursorColor = GlassPrimary
+                                )
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Button(
+                                onClick = { if (vm.addAdWhitelist(wl)) wl = "" },
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = GlassPrimary)
+                            ) { Text("+") }
+                        }
+                        vm.adWhitelist.forEach { d ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(d, color = GlassText, modifier = Modifier.weight(1f), maxLines = 1)
+                                IconButton(onClick = { vm.removeAdWhitelist(d) }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Outlined.Delete, null, tint = GlassTextMuted, modifier = Modifier.size(18.dp))
+                                }
+                            }
                         }
                     }
                 }

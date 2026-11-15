@@ -89,7 +89,10 @@ class VpEgsVpnService : VpnService() {
             val adStr = sp.getString("adblock_pkgs_str", null).orEmpty()
             val adSet = if (adPkgs.isNotEmpty()) adPkgs else adStr.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             val blockAds = adSet.isNotEmpty()
-            TunConfigAdapter.adapt(configJson, domains, blockAds)
+            val adDomains = if (blockAds) com.vpegs.ms.core.AdBlockEngine.loadDomains(this) else emptyList()
+            val adWl = (sp.getString("adblock_whitelist", "") ?: "")
+                .lines().map { it.trim() }.filter { it.isNotEmpty() }
+            TunConfigAdapter.adapt(configJson, domains, blockAds, adDomains, adWl)
         } catch (e: Exception) {
             fail("adapt: ${e.message}"); stopSelf(); return
         }

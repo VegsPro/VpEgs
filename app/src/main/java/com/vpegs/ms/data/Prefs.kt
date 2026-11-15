@@ -191,6 +191,14 @@ object Prefs {
             .putString("adblock_pkgs_str", pkgs.joinToString("\n"))
             .apply()
     }
+    fun saveAdWhitelist(ctx: Context, domains: List<String>) {
+        sp(ctx).edit().putString("adblock_whitelist", domains.joinToString("\n")).apply()
+    }
+    fun loadAdWhitelist(ctx: Context): List<String> {
+        val s = sp(ctx).getString("adblock_whitelist", "") ?: ""
+        return s.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    }
+
     fun loadAdBlockPackages(ctx: Context): Set<String> {
         val set = sp(ctx).getStringSet("adblock_pkgs", null)
         if (!set.isNullOrEmpty()) return set

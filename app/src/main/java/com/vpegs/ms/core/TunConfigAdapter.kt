@@ -6,30 +6,17 @@ import java.net.InetAddress
 
 /**
  * SOCKS-only config for Xray. TUN is handled by hev-socks5-tunnel.
- * Domain bypass: sniffing SNI + explicit IP rules from resolved hosts
- * (TUN/SOCKS often connects by IP, so domain-only rules miss).
+ * Ad-block: geosite ads tags + domain list → blackhole; whitelist → skip block.
+ * Domain bypass: SNI sniffing + resolved IPs → direct.
  */
 object TunConfigAdapter {
-
-    private val AD_DOMAINS = listOf(
-        "doubleclick.net", "googleadservices.com", "googlesyndication.com",
-        "pagead2.googlesyndication.com", "adservice.google.com",
-        "ads.google.com", "ad.doubleclick.net", "static.doubleclick.net",
-        "google-analytics.com", "googletagmanager.com", "googletagservices.com",
-        "facebook.com/tr", "connect.facebook.net", "ads.facebook.com",
-        "ads.twitter.com", "ads-twitter.com", "adnxs.com", "adsrvr.org",
-        "adform.net", "adcolony.com", "applovin.com", "unityads.unity3d.com",
-        "mopub.com", "taboola.com", "outbrain.com", "criteo.com",
-        "yandexadexchange.net", "an.yandex.ru", "ads.yandex.ru", "adfox.ru",
-        "ads.vk.com", "ad.mail.ru", "reklama.mail.ru", "target.my.com",
-        "pubmatic.com", "openx.net", "rubiconproject.com", "moatads.com",
-        "adjust.com", "appsflyer.com", "branch.io"
-    )
 
     fun adapt(
         rawJson: String,
         bypassDomains: List<String> = emptyList(),
-        blockAds: Boolean = false
+        blockAds: Boolean = false,
+        adDomains: List<String> = emptyList(),
+        adWhitelist: List<String> = emptyList()
     ): String {
         val root = try {
             JSONObject(rawJson)
@@ -76,11 +63,12 @@ object TunConfigAdapter {
 
         val domains = bypassDomains.map { normalizeDomain(it) }.filter { it.isNotBlank() }.distinct()
         val resolvedIps = resolveDomainIps(domains)
+        val whitelist = adWhitelist.map { normalizeDomain(it) }.filter { it.isNotBlank() }.distinct()
+        val ads = adDomains.map { normalizeDomain(it) }.filter { it.isNotBlank() && it !in whitelist }.distinct()
 
         val out = JSONObject()
         out.put("log", JSONObject().put("loglevel", "warning"))
 
-        // Prefer system/local resolution for bypassed domains so IPs match direct path
         val dnsServers = JSONArray()
         if (domains.isNotEmpty()) {
             dnsServers.put(
@@ -95,12 +83,19 @@ object TunConfigAdapter {
             )
         }
         dnsServers.put("1.1.1.1").put("8.8.8.8")
-        out.put(
-            "dns",
-            JSONObject()
-                .put("servers", dnsServers)
-                .put("queryStrategy", "UseIPv4")
-        )
+
+        // DNS sinkhole for a capped set of ad domains (fast path)
+        val hosts = JSONObject()
+        if (blockAds) {
+            ads.take(4000).forEach { d ->
+                hosts.put("domain:$d", "127.0.0.1")
+            }
+        }
+        val dnsObj = JSONObject()
+            .put("servers", dnsServers)
+            .put("queryStrategy", "UseIPv4")
+        if (hosts.length() > 0) dnsObj.put("hosts", hosts)
+        out.put("dns", dnsObj)
 
         out.put(
             "inbounds",
@@ -119,7 +114,6 @@ object TunConfigAdapter {
                         JSONObject()
                             .put("enabled", true)
                             .put("destOverride", JSONArray().put("http").put("tls").put("quic"))
-                            // false: override dest to sniffed domain so domain rules match reliably
                             .put("routeOnly", false)
                     )
             )
@@ -156,8 +150,6 @@ object TunConfigAdapter {
                     .put("outboundTag", "direct")
             )
         }
-
-        // IP fallback: TUN/SOCKS often sees only IPs — force those to direct
         if (resolvedIps.isNotEmpty()) {
             val ipArr = JSONArray()
             resolvedIps.forEach { ipArr.put(it) }
@@ -169,15 +161,45 @@ object TunConfigAdapter {
             )
         }
 
-        if (blockAds) {
+        // Whitelist before ad block (never sinkhole these)
+        if (blockAds && whitelist.isNotEmpty()) {
             val arr = JSONArray()
-            AD_DOMAINS.forEach { arr.put("domain:$it") }
+            whitelist.forEach {
+                arr.put("domain:$it")
+                arr.put("full:$it")
+            }
             rules.put(
                 JSONObject()
                     .put("type", "field")
                     .put("domain", arr)
+                    .put("outboundTag", "proxy")
+            )
+        }
+
+        if (blockAds) {
+            // geosite categories — bulk effective when geosite.dat exists
+            val geoArr = JSONArray()
+            AdBlockEngine.GEOSITE_ADS.forEach { geoArr.put(it) }
+            rules.put(
+                JSONObject()
+                    .put("type", "field")
+                    .put("domain", geoArr)
                     .put("outboundTag", "block")
             )
+            // explicit domains beyond hosts sinkhole (routing safety net)
+            if (ads.isNotEmpty()) {
+                // split into chunks of 800 for safer JSON size
+                ads.chunked(800).forEach { chunk ->
+                    val arr = JSONArray()
+                    chunk.forEach { arr.put("domain:$it") }
+                    rules.put(
+                        JSONObject()
+                            .put("type", "field")
+                            .put("domain", arr)
+                            .put("outboundTag", "block")
+                    )
+                }
+            }
         }
 
         rules.put(
@@ -212,16 +234,14 @@ object TunConfigAdapter {
         return s
     }
 
-    /** Resolve A records so bypass works when tunnel sees IPs only. */
     private fun resolveDomainIps(domains: List<String>): List<String> {
         val out = LinkedHashSet<String>()
         for (d in domains) {
             try {
                 InetAddress.getAllByName(d).forEach { addr ->
                     val host = addr.hostAddress ?: return@forEach
-                    if (':' !in host) out.add(host) // IPv4 only for simplicity
+                    if (':' !in host) out.add(host)
                 }
-                // common www
                 try {
                     InetAddress.getAllByName("www.$d").forEach { addr ->
                         val host = addr.hostAddress ?: return@forEach
