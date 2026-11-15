@@ -77,5 +77,9 @@ dependencies {
     // Glass / glassmorphism backdrop blur
     implementation("dev.chrisbanes.haze:haze:1.3.1")
     implementation("dev.chrisbanes.haze:haze-materials:1.3.1")
+    // Encrypted prefs (Android Keystore)
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // QR scan
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }
 

@@ -92,7 +92,8 @@ class VpEgsVpnService : VpnService() {
             val adDomains = if (blockAds) com.vpegs.ms.core.AdBlockEngine.loadDomains(this) else emptyList()
             val adWl = (sp.getString("adblock_whitelist", "") ?: "")
                 .lines().map { it.trim() }.filter { it.isNotEmpty() }
-            TunConfigAdapter.adapt(configJson, domains, blockAds, adDomains, adWl)
+            val lanProxy = sp.getBoolean("local_proxy_lan", false)
+            TunConfigAdapter.adapt(configJson, domains, blockAds, adDomains, adWl, lanProxy)
         } catch (e: Exception) {
             fail("adapt: ${e.message}"); stopSelf(); return
         }
@@ -141,9 +142,18 @@ class VpEgsVpnService : VpnService() {
             .addDnsServer("8.8.8.8")
             .setBlocking(true)
 
+        val blockIpv6 = try {
+            getSharedPreferences("vpegs_data", MODE_PRIVATE).getBoolean("block_ipv6", true)
+        } catch (_: Exception) { true }
+        if (!blockIpv6) {
+            try {
+                builder.addAddress("fd00:8:8:8::2", 126)
+                builder.addRoute("::", 0)
+            } catch (_: Exception) {}
+        }
+        // DNS only via tunnel (leak protection)
         try {
-            builder.addAddress("fd00:8:8:8::2", 126)
-            builder.addRoute("::", 0)
+            builder.addDnsServer("1.1.1.1")
         } catch (_: Exception) {}
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -295,6 +305,14 @@ class VpEgsVpnService : VpnService() {
     private fun fail(msg: String) {
         Log.e(TAG, msg)
         lastError = msg
+        try {
+            val ks = getSharedPreferences("vpegs_data", MODE_PRIVATE).getBoolean("kill_switch", false)
+            killSwitchArmed = ks
+            if (ks) {
+                // Keep service alive marker so UI can show "blocked until reconnect"
+                lastError = "Kill Switch: $msg"
+            }
+        } catch (_: Exception) {}
         isConnected = false
     }
 
@@ -360,6 +378,8 @@ class VpEgsVpnService : VpnService() {
 
         @Volatile var isConnected: Boolean = false
         @Volatile var lastError: String? = null
+        @Volatile var killSwitchArmed: Boolean = false
+        @Volatile var lastHandshakeOk: Long = 0L
         @Volatile var currentServerName: String? = null
         @Volatile var currentConfigJson: String? = null
     }

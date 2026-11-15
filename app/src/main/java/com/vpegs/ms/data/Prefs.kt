@@ -120,7 +120,10 @@ object Prefs {
 
     fun saveConfigs(ctx: Context, map: Map<String, String>) {
         val obj = JSONObject()
-        map.forEach { (k, v) -> obj.put(k, v) }
+        map.forEach { (k, v) ->
+            obj.put(k, v)
+            try { SecureStore.putConfig(ctx, k, v) } catch (_: Exception) {}
+        }
         sp(ctx).edit().putString("configs", obj.toString()).apply()
     }
 
@@ -298,6 +301,53 @@ object Prefs {
         val s = sp(ctx).getString("best_sub_ids", "") ?: ""
         return s.split("|").filter { it.isNotBlank() }.toSet()
     }
+
+    // --- Security / network features ---
+    fun saveKillSwitch(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("kill_switch", enabled).apply()
+    }
+    fun loadKillSwitch(ctx: Context): Boolean = sp(ctx).getBoolean("kill_switch", false)
+
+    fun saveBlockIpv6(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("block_ipv6", enabled).apply()
+    }
+    fun loadBlockIpv6(ctx: Context): Boolean = sp(ctx).getBoolean("block_ipv6", true)
+
+    fun saveForceVpnDns(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("force_vpn_dns", enabled).apply()
+    }
+    fun loadForceVpnDns(ctx: Context): Boolean = sp(ctx).getBoolean("force_vpn_dns", true)
+
+    fun saveAutoConnect(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("auto_connect", enabled).apply()
+    }
+    fun loadAutoConnect(ctx: Context): Boolean = sp(ctx).getBoolean("auto_connect", false)
+
+    fun saveAutoConnectUntrustedOnly(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("auto_connect_untrusted", enabled).apply()
+    }
+    fun loadAutoConnectUntrustedOnly(ctx: Context): Boolean =
+        sp(ctx).getBoolean("auto_connect_untrusted", true)
+
+    fun saveTrustedWifi(ctx: Context, ssids: Set<String>) {
+        sp(ctx).edit().putStringSet("trusted_wifi", HashSet(ssids)).apply()
+    }
+    fun loadTrustedWifi(ctx: Context): Set<String> =
+        sp(ctx).getStringSet("trusted_wifi", emptySet()) ?: emptySet()
+
+    fun saveLocalProxyLan(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("local_proxy_lan", enabled).apply()
+    }
+    fun loadLocalProxyLan(ctx: Context): Boolean = sp(ctx).getBoolean("local_proxy_lan", false)
+
+    fun saveHealthMonitor(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("health_monitor", enabled).apply()
+    }
+    fun loadHealthMonitor(ctx: Context): Boolean = sp(ctx).getBoolean("health_monitor", true)
+
+    fun saveDdnsRefresh(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean("ddns_refresh", enabled).apply()
+    }
+    fun loadDdnsRefresh(ctx: Context): Boolean = sp(ctx).getBoolean("ddns_refresh", true)
+
 }
-
-

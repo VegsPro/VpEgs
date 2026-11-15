@@ -135,6 +135,110 @@ fun SettingsScreen(vm: MainViewModel) {
             }
         }
 
+        Spacer(Modifier.height(16.dp))
+        Text("Безопасность и сеть", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Spacer(Modifier.height(8.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Kill Switch", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("При обрыве VPN — не пускать трафик в открытую сеть (маркер + блок до реконнекта)", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(checked = vm.killSwitch, onCheckedChange = { vm.updateKillSwitch(it) })
+            }
+            Spacer(Modifier.height(12.dp)); HorizontalDivider(color = GlassBorder); Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Блок IPv6", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Режет IPv6-утечки, если сервер без IPv6", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(checked = vm.blockIpv6, onCheckedChange = { vm.updateBlockIpv6(it) })
+            }
+            Spacer(Modifier.height(12.dp)); HorizontalDivider(color = GlassBorder); Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("DNS только через VPN", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Снижает DNS-утечки к провайдеру", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(checked = vm.forceVpnDns, onCheckedChange = { vm.updateForceVpnDns(it) })
+            }
+            Spacer(Modifier.height(12.dp)); HorizontalDivider(color = GlassBorder); Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Мониторинг туннеля", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Проверка SOCKS / handshake · ${vm.tunnelHealthText}", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(checked = vm.healthMonitorOn, onCheckedChange = { vm.updateHealthMonitor(it) })
+            }
+            Spacer(Modifier.height(12.dp)); HorizontalDivider(color = GlassBorder); Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("DDNS / смена IP endpoint", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Периодически учитывать новый IP хоста (для DDNS)", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(checked = vm.ddnsRefresh, onCheckedChange = { vm.updateDdnsRefresh(it) })
+            }
+            Spacer(Modifier.height(12.dp)); HorizontalDivider(color = GlassBorder); Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Локальный SOCKS (LAN)", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("127.0.0.1:10808 или 0.0.0.0:10808 для других устройств (осторожно)", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(checked = vm.localProxyLan, onCheckedChange = { vm.updateLocalProxyLan(it) })
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Text("Автоподключение", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Spacer(Modifier.height(8.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Auto-connect", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Подключать VPN при появлении сети", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(checked = vm.autoConnect, onCheckedChange = { vm.updateAutoConnect(it) })
+            }
+            Spacer(Modifier.height(12.dp)); HorizontalDivider(color = GlassBorder); Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Только недоверенный Wi‑Fi", style = MaterialTheme.typography.bodyLarge, color = GlassText)
+                    Text("Не трогать SSID из белого списка", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                }
+                GlassSwitch(checked = vm.autoConnectUntrustedOnly, onCheckedChange = { vm.updateAutoConnectUntrustedOnly(it) })
+            }
+            Spacer(Modifier.height(12.dp))
+            Text("Доверенные Wi‑Fi (SSID через запятую)", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(
+                value = vm.trustedWifiSsids,
+                onValueChange = { vm.updateTrustedWifiText(it) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("Home, Office") },
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = GlassPrimary,
+                    unfocusedBorderColor = GlassBorder,
+                    focusedTextColor = GlassText,
+                    unfocusedTextColor = GlassText,
+                    cursorColor = GlassPrimary
+                )
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Text("Импорт и шифрование", style = MaterialTheme.typography.titleMedium, color = GlassText)
+        Spacer(Modifier.height(8.dp))
+        GlassCard(Modifier.fillMaxWidth()) {
+            Text(
+                "Конфиги дополнительно пишутся в EncryptedSharedPreferences (Android Keystore). " +
+                    "Импорт: Подписки → вставка ссылки/JSON/QR. WireGuard/AmneziaWG сохраняются, но туннель пока через Xray.",
+                style = MaterialTheme.typography.labelMedium,
+                color = GlassTextMuted
+            )
+        }
+
 
         Spacer(Modifier.height(16.dp))
         Text("Кнопка в шторке", style = MaterialTheme.typography.titleMedium, color = GlassText)

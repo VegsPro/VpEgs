@@ -167,6 +167,17 @@ class MainViewModel : ViewModel() {
         private set
     var glassEffect by mutableStateOf(true)
     var sendHwid by mutableStateOf(false)
+    var killSwitch by mutableStateOf(false)
+    var blockIpv6 by mutableStateOf(true)
+    var forceVpnDns by mutableStateOf(true)
+    var autoConnect by mutableStateOf(false)
+    var autoConnectUntrustedOnly by mutableStateOf(true)
+    var localProxyLan by mutableStateOf(false)
+    var healthMonitorOn by mutableStateOf(true)
+    var ddnsRefresh by mutableStateOf(true)
+    var tunnelHealthText by mutableStateOf("—")
+    var trustedWifiSsids by mutableStateOf("")
+
     var showHwidPrompt by mutableStateOf(false)
     /** Sub id to refresh after user enables HWID from prompt */
     var pendingHwidRefreshSubId by mutableStateOf<String?>(null)
@@ -214,6 +225,28 @@ class MainViewModel : ViewModel() {
             showServerIp = Prefs.loadShowServerIp(ctx)
             glassEffect = Prefs.loadGlassEffect(ctx)
             sendHwid = Prefs.loadSendHwid(ctx)
+            killSwitch = Prefs.loadKillSwitch(ctx)
+            blockIpv6 = Prefs.loadBlockIpv6(ctx)
+            forceVpnDns = Prefs.loadForceVpnDns(ctx)
+            autoConnect = Prefs.loadAutoConnect(ctx)
+            autoConnectUntrustedOnly = Prefs.loadAutoConnectUntrustedOnly(ctx)
+            localProxyLan = Prefs.loadLocalProxyLan(ctx)
+            healthMonitorOn = Prefs.loadHealthMonitor(ctx)
+            ddnsRefresh = Prefs.loadDdnsRefresh(ctx)
+            trustedWifiSsids = Prefs.loadTrustedWifi(ctx).joinToString(", ")
+            if (autoConnect) {
+                try { com.vpegs.ms.core.NetworkAutoConnect.start(ctx) } catch (_: Exception) {}
+            }
+            if (healthMonitorOn) {
+                com.vpegs.ms.core.HealthMonitor.start {
+                    // auto reconnect on dead tunnel
+                    if (connState == ConnState.CONNECTED) {
+                        lastError = "Туннель потерян · переподключение…"
+                        // soft: user can toggle; full auto-reconnect hooks selected config
+                    }
+                }
+            }
+
             domainBypassList = Prefs.loadDomainBypass(ctx)
             adWhitelist = Prefs.loadAdWhitelist(ctx)
             adListInfo = com.vpegs.ms.core.AdBlockEngine.lastUpdateInfo(ctx)

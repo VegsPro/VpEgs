@@ -16,7 +16,8 @@ object TunConfigAdapter {
         bypassDomains: List<String> = emptyList(),
         blockAds: Boolean = false,
         adDomains: List<String> = emptyList(),
-        adWhitelist: List<String> = emptyList()
+        adWhitelist: List<String> = emptyList(),
+        localProxyLan: Boolean = false
     ): String {
         val root = try {
             JSONObject(rawJson)
@@ -103,7 +104,7 @@ object TunConfigAdapter {
                 JSONObject()
                     .put("tag", "socks-in")
                     .put("port", 10808)
-                    .put("listen", "127.0.0.1")
+                    .put("listen", if (localProxyLan) "0.0.0.0" else "127.0.0.1")
                     .put("protocol", "socks")
                     .put(
                         "settings",

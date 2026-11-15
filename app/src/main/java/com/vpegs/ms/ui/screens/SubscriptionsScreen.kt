@@ -16,6 +16,9 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Update
 import androidx.compose.material3.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.zxing.integration.android.IntentIntegrator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,22 +71,55 @@ fun SubscriptionsScreen(vm: MainViewModel) {
 
     if (showAdd) {
         var url by remember { mutableStateOf("") }
+        val ctx = LocalContext.current
+        val qrLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            val intentResult = IntentIntegrator.parseActivityResult(result.resultCode, result.data)
+            val contents = intentResult?.contents
+            if (!contents.isNullOrBlank()) {
+                if (contents.startsWith("http")) vm.addSubscription("", contents.trim())
+                else vm.importConfigText(contents)
+                showAdd = false
+            }
+        }
         AlertDialog(
             onDismissRequest = { showAdd = false },
-            title = { Text("Новая подписка") },
+            title = { Text("Добавить / импорт") },
             text = {
-                OutlinedTextField(
-                    url, { url = it },
-                    label = { Text("Ссылка подписки") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column {
+                    Text(
+                        "Ссылка подписки, share-ссылки, JSON или WG/Amnezia .conf",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTextMuted
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        url, { url = it },
+                        label = { Text("URL / конфиг") },
+                        singleLine = false,
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = {
+                        val integrator = IntentIntegrator(ctx as android.app.Activity)
+                        integrator.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+                        integrator.setPrompt("QR конфига / подписки")
+                        integrator.setBeepEnabled(false)
+                        qrLauncher.launch(integrator.createScanIntent())
+                    }) { Text("Сканировать QR") }
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         if (url.isNotBlank()) {
-                            vm.addSubscription("", url.trim())
+                            val u = url.trim()
+                            if (u.startsWith("http://") || u.startsWith("https://"))
+                                vm.addSubscription("", u)
+                            else
+                                vm.importConfigText(u)
                             showAdd = false
                         }
                     }
