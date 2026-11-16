@@ -104,7 +104,7 @@ object AdBlockEngine {
             return -1
         }
         // Cap stored rules for Xray config size / memory
-        val trimmed = domains.take(25_000)
+        val trimmed = domains.take(2_000)  // stored for future; runtime uses BUILTIN only
         listFile(ctx).writeText(trimmed.joinToString("\n"))
         metaFile(ctx).writeText(
             "обновлено · ${trimmed.size} доменов · источников: $sourceOk"

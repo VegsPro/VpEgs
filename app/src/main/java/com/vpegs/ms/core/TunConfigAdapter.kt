@@ -6,10 +6,14 @@ import java.net.InetAddress
 
 /**
  * SOCKS-only config for Xray. TUN is handled by hev-socks5-tunnel.
- * Ad-block: geosite ads tags + domain list → blackhole; whitelist → skip block.
+ * Ad-block: small domain list only (large lists freeze UI / break Xray routing).
  * Domain bypass: SNI sniffing + resolved IPs → direct.
  */
 object TunConfigAdapter {
+
+    /** Hard cap — more domains = huge JSON, ANR, Xray parse fail. */
+    private const val MAX_AD_DOMAINS = 120
+    private const val MAX_BYPASS_DOMAINS = 40
 
     fun adapt(
         rawJson: String,
@@ -62,10 +66,18 @@ object TunConfigAdapter {
                 .put("settings", JSONObject())
         )
 
-        val domains = bypassDomains.map { normalizeDomain(it) }.filter { it.isNotBlank() }.distinct()
+        val domains = bypassDomains.map { normalizeDomain(it) }
+            .filter { it.isNotBlank() }.distinct().take(MAX_BYPASS_DOMAINS)
         val resolvedIps = resolveDomainIps(domains)
-        val whitelist = adWhitelist.map { normalizeDomain(it) }.filter { it.isNotBlank() }.distinct()
-        val ads = adDomains.map { normalizeDomain(it) }.filter { it.isNotBlank() && it !in whitelist }.distinct()
+        val whitelist = adWhitelist.map { normalizeDomain(it) }
+            .filter { it.isNotBlank() }.distinct().take(50)
+
+        // Prefer compact builtin; never inject tens of thousands of rules
+        val adsBase = if (adDomains.isEmpty()) AdBlockEngine.BUILTIN else adDomains
+        val ads = adsBase.map { normalizeDomain(it) }
+            .filter { it.isNotBlank() && it !in whitelist }
+            .distinct()
+            .take(MAX_AD_DOMAINS)
 
         val out = JSONObject()
         out.put("log", JSONObject().put("loglevel", "warning"))
@@ -84,19 +96,12 @@ object TunConfigAdapter {
             )
         }
         dnsServers.put("1.1.1.1").put("8.8.8.8")
-
-        // DNS sinkhole for a capped set of ad domains (fast path)
-        val hosts = JSONObject()
-        if (blockAds) {
-            ads.take(4000).forEach { d ->
-                hosts.put("domain:$d", "127.0.0.1")
-            }
-        }
-        val dnsObj = JSONObject()
-            .put("servers", dnsServers)
-            .put("queryStrategy", "UseIPv4")
-        if (hosts.length() > 0) dnsObj.put("hosts", hosts)
-        out.put("dns", dnsObj)
+        out.put(
+            "dns",
+            JSONObject()
+                .put("servers", dnsServers)
+                .put("queryStrategy", "UseIPv4")
+        )
 
         out.put(
             "inbounds",
@@ -162,7 +167,6 @@ object TunConfigAdapter {
             )
         }
 
-        // Whitelist before ad block (never sinkhole these)
         if (blockAds && whitelist.isNotEmpty()) {
             val arr = JSONArray()
             whitelist.forEach {
@@ -177,30 +181,16 @@ object TunConfigAdapter {
             )
         }
 
-        if (blockAds) {
-            // geosite categories — bulk effective when geosite.dat exists
-            val geoArr = JSONArray()
-            AdBlockEngine.GEOSITE_ADS.forEach { geoArr.put(it) }
+        // Lightweight ad block only — no geosite (missing tags break routing), no huge lists
+        if (blockAds && ads.isNotEmpty()) {
+            val arr = JSONArray()
+            ads.forEach { arr.put("domain:$it") }
             rules.put(
                 JSONObject()
                     .put("type", "field")
-                    .put("domain", geoArr)
+                    .put("domain", arr)
                     .put("outboundTag", "block")
             )
-            // explicit domains beyond hosts sinkhole (routing safety net)
-            if (ads.isNotEmpty()) {
-                // split into chunks of 800 for safer JSON size
-                ads.chunked(800).forEach { chunk ->
-                    val arr = JSONArray()
-                    chunk.forEach { arr.put("domain:$it") }
-                    rules.put(
-                        JSONObject()
-                            .put("type", "field")
-                            .put("domain", arr)
-                            .put("outboundTag", "block")
-                    )
-                }
-            }
         }
 
         rules.put(
@@ -214,7 +204,6 @@ object TunConfigAdapter {
             "routing",
             JSONObject()
                 .put("domainStrategy", "IPIfNonMatch")
-                .put("domainMatcher", "mph")
                 .put("rules", rules)
         )
 
@@ -243,12 +232,6 @@ object TunConfigAdapter {
                     val host = addr.hostAddress ?: return@forEach
                     if (':' !in host) out.add(host)
                 }
-                try {
-                    InetAddress.getAllByName("www.$d").forEach { addr ->
-                        val host = addr.hostAddress ?: return@forEach
-                        if (':' !in host) out.add(host)
-                    }
-                } catch (_: Exception) {}
             } catch (_: Exception) {}
         }
         return out.toList()

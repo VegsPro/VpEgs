@@ -311,7 +311,7 @@ fun AppsScreen(vm: MainViewModel) {
                         onToggle = { showAds = !showAds }
                     ) {
                         Text(
-                            "Сетевой блок (DNS + geosite + списки). Не MITM как AdGuard.",
+                            "Сетевой блок (компактный список доменов). Без тяжёлых списков — без лагов.",
                             style = MaterialTheme.typography.labelSmall,
                             color = GlassTextMuted
                         )

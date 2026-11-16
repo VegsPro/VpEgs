@@ -89,7 +89,8 @@ class VpEgsVpnService : VpnService() {
             val adStr = sp.getString("adblock_pkgs_str", null).orEmpty()
             val adSet = if (adPkgs.isNotEmpty()) adPkgs else adStr.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             val blockAds = adSet.isNotEmpty()
-            val adDomains = if (blockAds) com.vpegs.ms.core.AdBlockEngine.loadDomains(this) else emptyList()
+            // Only compact builtin list — full downloaded lists freeze UI / break Xray
+            val adDomains = if (blockAds) com.vpegs.ms.core.AdBlockEngine.BUILTIN else emptyList()
             val adWl = (sp.getString("adblock_whitelist", "") ?: "")
                 .lines().map { it.trim() }.filter { it.isNotEmpty() }
             val lanProxy = sp.getBoolean("local_proxy_lan", false)

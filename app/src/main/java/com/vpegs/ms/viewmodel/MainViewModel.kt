@@ -1551,8 +1551,8 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                     com.vpegs.ms.core.AdBlockEngine.updateLists(ctx)
                 }
                 adListInfo = com.vpegs.ms.core.AdBlockEngine.lastUpdateInfo(ctx)
-                lastError = if (n < 0) "Не удалось скачать списки рекламы"
-                else "Списки рекламы: $n доменов · реконнект VPN"
+                lastError = if (n < 0) "Не удалось скачать списки"
+                else "Скачано $n · в туннеле компактный список (без лагов)"
             } catch (e: Exception) {
                 lastError = "Списки: ${e.message?.take(80)}"
             } finally {
