@@ -881,6 +881,82 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
         glassEffect = v
         appContext?.let { Prefs.saveGlassEffect(it, v) }
     }
+    fun updateKillSwitch(v: Boolean) {
+        killSwitch = v
+        appContext?.let { Prefs.saveKillSwitch(it, v) }
+    }
+    fun updateBlockIpv6(v: Boolean) {
+        blockIpv6 = v
+        appContext?.let { Prefs.saveBlockIpv6(it, v) }
+        if (connState == ConnState.CONNECTED) lastError = "IPv6 · реконнект VPN"
+    }
+    fun updateForceVpnDns(v: Boolean) {
+        forceVpnDns = v
+        appContext?.let { Prefs.saveForceVpnDns(it, v) }
+    }
+    fun updateAutoConnect(v: Boolean) {
+        autoConnect = v
+        appContext?.let {
+            Prefs.saveAutoConnect(it, v)
+            if (v) com.vpegs.ms.core.NetworkAutoConnect.start(it)
+            else com.vpegs.ms.core.NetworkAutoConnect.stop(it)
+        }
+    }
+    fun updateAutoConnectUntrustedOnly(v: Boolean) {
+        autoConnectUntrustedOnly = v
+        appContext?.let { Prefs.saveAutoConnectUntrustedOnly(it, v) }
+    }
+    fun updateLocalProxyLan(v: Boolean) {
+        localProxyLan = v
+        appContext?.let { Prefs.saveLocalProxyLan(it, v) }
+        if (connState == ConnState.CONNECTED) lastError = "Локальный прокси · реконнект VPN"
+    }
+    fun updateHealthMonitor(v: Boolean) {
+        healthMonitorOn = v
+        appContext?.let { Prefs.saveHealthMonitor(it, v) }
+        if (v) com.vpegs.ms.core.HealthMonitor.start {}
+        else com.vpegs.ms.core.HealthMonitor.stop()
+    }
+    fun updateDdnsRefresh(v: Boolean) {
+        ddnsRefresh = v
+        appContext?.let { Prefs.saveDdnsRefresh(it, v) }
+    }
+    fun updateTrustedWifiText(text: String) {
+        trustedWifiSsids = text
+        val set = text.split(',').map { it.trim().trim('"') }.filter { it.isNotEmpty() }.toSet()
+        appContext?.let { Prefs.saveTrustedWifi(it, set) }
+    }
+
+    fun importConfigText(raw: String) {
+        val ctx = appContext ?: return
+        viewModelScope.launch {
+            val res = withContext(Dispatchers.IO) {
+                com.vpegs.ms.core.ConfigImporter.importText(ctx, raw)
+            }
+            if (res.subscriptionUrl != null) {
+                addSubscription("", res.subscriptionUrl!!)
+                return@launch
+            }
+            if (res.servers.isNotEmpty()) {
+                val existing = servers.toMutableList()
+                val ids = existing.map { it.id }.toSet()
+                res.servers.forEach { if (it.id !in ids) existing.add(it) }
+                servers = existing
+                if (res.configs.isNotEmpty()) {
+                    val map = Prefs.loadConfigs(ctx).toMutableMap()
+                    map.putAll(res.configs)
+                    Prefs.saveConfigs(ctx, map)
+                }
+                Prefs.saveServers(ctx, servers)
+            }
+            lastError = res.message
+        }
+    }
+
+    fun refreshTunnelHealth() {
+        tunnelHealthText = com.vpegs.ms.core.HealthMonitor.statusText
+    }
+
     fun updateSendHwid(v: Boolean) {
         sendHwid = v
         appContext?.let { Prefs.saveSendHwid(it, v) }
