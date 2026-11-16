@@ -439,8 +439,12 @@ class MainViewModel : ViewModel() {
 
     // ——— Server actions ———
     fun selectServer(s: ServerNode) {
-        servers = servers.map { it.copy(isSelected = it.id == s.id) }
-        selectedServer = s.copy(isSelected = true)
+        val id = s.id
+        // Single selection only — clear every other flag
+        servers = servers.map { it.copy(isSelected = it.id == id) }
+        selectedServer = servers.find { it.id == id }?.copy(isSelected = true)
+            ?: s.copy(isSelected = true)
+        appContext?.let { Prefs.saveSelectedId(it, id) }
         persist()
     }
 

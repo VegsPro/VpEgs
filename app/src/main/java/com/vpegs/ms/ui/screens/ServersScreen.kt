@@ -134,7 +134,7 @@ fun ServersScreen(vm: MainViewModel) {
         Spacer(Modifier.height(8.dp))
 
         // Flat virtualized list: only visible headers/rows are composed
-        val flat = remember(groups, vm.expandedSubIds) {
+        val flat = remember(groups, vm.expandedSubIds, vm.selectedServer?.id) {
             buildList {
                 for ((sub, nodes) in groups) {
                     val exp = sub.id in vm.expandedSubIds
@@ -176,7 +176,7 @@ fun ServersScreen(vm: MainViewModel) {
                     )
                     is ServerListItem.Row -> RegionRow(
                         server = item.server,
-                        selected = item.server.id == vm.selectedServer?.id || item.server.isSelected,
+                        selected = item.server.id == vm.selectedServer?.id,
                         showProtocol = vm.showServerProtocol,
                         showIp = vm.showServerIp,
                         isPinging = item.server.id in vm.pingingIds,
