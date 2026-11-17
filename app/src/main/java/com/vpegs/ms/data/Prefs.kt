@@ -119,11 +119,9 @@ object Prefs {
     }
 
     fun saveConfigs(ctx: Context, map: Map<String, String>) {
+        // Plain prefs only — Keystore write per key caused ANR on large maps
         val obj = JSONObject()
-        map.forEach { (k, v) ->
-            obj.put(k, v)
-            try { SecureStore.putConfig(ctx, k, v) } catch (_: Exception) {}
-        }
+        map.forEach { (k, v) -> obj.put(k, v) }
         sp(ctx).edit().putString("configs", obj.toString()).apply()
     }
 

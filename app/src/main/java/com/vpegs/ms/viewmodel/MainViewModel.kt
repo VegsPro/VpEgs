@@ -292,14 +292,24 @@ class MainViewModel : ViewModel() {
 
     private fun persist() {
         val ctx = appContext ?: return
-        try {
-            Prefs.saveSubscriptions(ctx, subscriptions)
-            Prefs.saveServers(ctx, servers)
-            Prefs.saveConfigs(ctx, configByServerId.toMap())
-            Prefs.saveSelectedId(ctx, selectedServer?.id)
-            Prefs.saveSettings(ctx, globalProxyMode, invertAppProxy, autoUpdateOnLaunch)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        // Snapshot on caller thread, write on IO — avoid ANR
+        val subs = subscriptions
+        val srvs = servers
+        val cfgs = configByServerId.toMap()
+        val sel = selectedServer?.id
+        val g = globalProxyMode
+        val inv = invertAppProxy
+        val auto = autoUpdateOnLaunch
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                Prefs.saveSubscriptions(ctx, subs)
+                Prefs.saveServers(ctx, srvs)
+                Prefs.saveConfigs(ctx, cfgs)
+                Prefs.saveSelectedId(ctx, sel)
+                Prefs.saveSettings(ctx, g, inv, auto)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -444,8 +454,17 @@ class MainViewModel : ViewModel() {
         servers = servers.map { it.copy(isSelected = it.id == id) }
         selectedServer = servers.find { it.id == id }?.copy(isSelected = true)
             ?: s.copy(isSelected = true)
-        appContext?.let { Prefs.saveSelectedId(it, id) }
-        persist()
+        val ctx = appContext
+        val snap = servers
+        // Lightweight persist: selection + server flags only (not all Xray configs)
+        if (ctx != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    Prefs.saveSelectedId(ctx, id)
+                    Prefs.saveServers(ctx, snap)
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     fun toggleFavorite(id: String) {
@@ -1605,6 +1624,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
 
     fun loadInstalledApps(context: Context) {
         if (appsLoading) return
+        if (appProxyList.isNotEmpty()) return // already loaded — avoid ANR on tab switch
         appsLoading = true
         viewModelScope.launch {
             try {

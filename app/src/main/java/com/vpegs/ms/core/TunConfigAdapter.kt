@@ -68,7 +68,8 @@ object TunConfigAdapter {
 
         val domains = bypassDomains.map { normalizeDomain(it) }
             .filter { it.isNotBlank() }.distinct().take(MAX_BYPASS_DOMAINS)
-        val resolvedIps = resolveDomainIps(domains)
+        // Skip DNS resolve here — InetAddress can block 5–30s and freeze connect
+        val resolvedIps = emptyList<String>()
         val whitelist = adWhitelist.map { normalizeDomain(it) }
             .filter { it.isNotBlank() }.distinct().take(50)
 
