@@ -197,6 +197,13 @@ fun HomeScreen(vm: MainViewModel) {
                         style = MaterialTheme.typography.titleMedium,
                         color = GlassText
                     )
+                    if (!vm.ipLoading && !vm.publicIpCountry.isNullOrBlank()) {
+                        Text(
+                            "${vm.publicIpFlag} ${vm.publicIpCountry}".trim(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GlassTextMuted
+                        )
+                    }
                 }
                 TextButton(onClick = { vm.refreshPublicIp() }) {
                     Text("Обновить", color = GlassPrimary)

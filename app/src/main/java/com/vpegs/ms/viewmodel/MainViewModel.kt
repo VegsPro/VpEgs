@@ -56,6 +56,8 @@ class MainViewModel : ViewModel() {
     var otherVpnActive by mutableStateOf(false)
         private set
     var publicIp by mutableStateOf<String?>(null)
+    var publicIpCountry by mutableStateOf<String?>(null)
+    var publicIpFlag by mutableStateOf("")
         private set
     var ipLoading by mutableStateOf(false)
         private set
@@ -516,6 +518,13 @@ class MainViewModel : ViewModel() {
             ipLoading = false
             // Cache measured exit IP on the active server
             val ip = publicIp
+            publicIpCountry = null
+            publicIpFlag = ""
+            if (!ip.isNullOrBlank()) {
+                val geo = withContext(Dispatchers.IO) { lookupIpCountry(ip) }
+                publicIpCountry = geo?.first
+                publicIpFlag = geo?.second ?: ""
+            }
             val sid = selectedServer?.id
             if (!ip.isNullOrBlank() && sid != null && viaVpn) {
                 servers = servers.map {
@@ -525,9 +534,54 @@ class MainViewModel : ViewModel() {
                 persist()
             }
             appContext?.getSharedPreferences("vpegs_widget", android.content.Context.MODE_PRIVATE)
-                ?.edit()?.putString("last_ip", publicIp ?: "—")?.apply()
+                ?.edit()
+                ?.putString("last_ip", publicIp ?: "—")
+                ?.putString("last_country", publicIpCountry ?: "")
+                ?.apply()
             try { com.vpegs.ms.ui.widget.VpEgsWidgetReceiver.updateAll(appContext!!) } catch (_: Exception) {}
         }
+    }
+
+    /** @return Pair(countryName, flagEmoji) */
+    private fun lookupIpCountry(ip: String): Pair<String, String>? {
+        val urls = listOf(
+            "http://ip-api.com/json/$ip?fields=status,country,countryCode",
+            "https://ipwho.is/$ip"
+        )
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        for (u in urls) {
+            try {
+                val req = okhttp3.Request.Builder().url(u).header("User-Agent", "VpEgs/1.0").build()
+                client.newCall(req).execute().use { r ->
+                    if (!r.isSuccessful) return@use
+                    val body = r.body?.string() ?: return@use
+                    val o = org.json.JSONObject(body)
+                    if (u.contains("ip-api")) {
+                        if (o.optString("status") != "success") return@use
+                        val country = o.optString("country").ifBlank { return@use }
+                        val cc = o.optString("countryCode")
+                        return country to countryFlag(cc)
+                    } else {
+                        if (!o.optBoolean("success", true)) return@use
+                        val country = o.optString("country").ifBlank { return@use }
+                        val cc = o.optString("country_code")
+                        return country to countryFlag(cc)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
+    private fun countryFlag(cc: String): String {
+        val c = cc.trim().uppercase()
+        if (c.length != 2 || !c.all { it in 'A'..'Z' }) return "🌐"
+        val a = 0x1F1E6 + (c[0].code - 'A'.code)
+        val b = 0x1F1E6 + (c[1].code - 'A'.code)
+        return String(Character.toChars(a)) + String(Character.toChars(b))
     }
 
     fun pingCurrent() {
