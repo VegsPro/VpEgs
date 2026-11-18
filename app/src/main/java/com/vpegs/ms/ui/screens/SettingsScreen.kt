@@ -385,7 +385,7 @@ fun SettingsScreen(vm: MainViewModel) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Базовые сервера", style = MaterialTheme.typography.bodyLarge, color = GlassText)
-                    Text("⭐ VpEgs Config с GitHub", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
+                    Text("⭐ VpEgs Config", style = MaterialTheme.typography.labelMedium, color = GlassTextMuted)
                 }
                 GlassSwitch(checked = vm.showBuiltinServers, onCheckedChange = { vm.updateShowBuiltin(it) })
             }

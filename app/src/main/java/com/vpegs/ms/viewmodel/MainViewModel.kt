@@ -1724,10 +1724,17 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                 name = BuiltInConfigSources.SUB_NAME,
                 url = BuiltInConfigSources.SUB_URL,
                 autoUpdate = true,
-                announce = "Публичные free-конфиги с GitHub (качество не гарантируется)"
+                announce = "VpEgs Config · единый список серверов"
             )
             subscriptions = listOf(sub) + subscriptions
             persist()
+        } else {
+            // Migrate old GitHub multi-source URL → single endpoint
+            subscriptions = subscriptions.map {
+                if (it.id == BuiltInConfigSources.SUB_ID && it.url != BuiltInConfigSources.SUB_URL)
+                    it.copy(url = BuiltInConfigSources.SUB_URL, announce = "VpEgs Config · единый список серверов")
+                else it
+            }
         }
         if (fetch) refreshBuiltInConfigs()
     }
@@ -1735,60 +1742,61 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
     fun refreshBuiltInConfigs() {
         viewModelScope.launch {
             workStatus = "Загрузка VpEgs Config…"
-            workProgress = 0.05f
+            workProgress = 0.1f
             try {
                 val client = okhttp3.OkHttpClient.Builder()
-                    .connectTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
-                    .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+                    .followRedirects(true)
                     .build()
-                val bodies = mutableListOf<String>()
-                val total = BuiltInConfigSources.urls.size
-                BuiltInConfigSources.urls.forEachIndexed { index, url ->
-                    workStatus = "Источник ${index + 1}/$total…"
-                    workProgress = (index + 1).toFloat() / (total + 1)
-                    try {
-                        withContext(Dispatchers.IO) {
-                            val req = okhttp3.Request.Builder()
-                                .url(url)
-                                .header("User-Agent", "VpEgs/${BuildConfig.VERSION_NAME}")
-                                .build()
-                            client.newCall(req).execute().use { resp ->
-                                if (resp.isSuccessful) {
-                                    val body = resp.body?.string().orEmpty()
-                                    if (body.isNotBlank()) bodies.add(body)
-                                }
-                            }
+                val body = withContext(Dispatchers.IO) {
+                    val req = okhttp3.Request.Builder()
+                        .url(BuiltInConfigSources.SUB_URL)
+                        .header("User-Agent", "VpEgs/${BuildConfig.VERSION_NAME}")
+                        .header("Accept", "application/json, text/plain, */*")
+                        .build()
+                    client.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) {
+                            throw IllegalStateException("HTTP ${resp.code}")
                         }
-                    } catch (_: Exception) { /* skip dead source */ }
+                        resp.body?.string().orEmpty()
+                    }
                 }
+                if (body.isBlank()) throw IllegalStateException("Пустой ответ")
+
                 workStatus = "Разбор серверов…"
-                workProgress = 0.9f
-                val merged = StringBuilder()
-                bodies.forEach { b ->
-                    merged.append(b.trim()).append('\n')
+                workProgress = 0.55f
+
+                // Prefer JSON { configs: ["vless://…", …] }; fallback to raw subscription body
+                val linkText = withContext(Dispatchers.Default) {
+                    extractBuiltinLinks(body)
                 }
-                val parsed = com.vpegs.ms.core.LinkParser
-                    .parseSubscriptionBody(merged.toString(), BuiltInConfigSources.SUB_ID, BuiltInConfigSources.SUB_NAME)
-                // Deduplicate by address:port + protocol
+                val parsed = withContext(Dispatchers.Default) {
+                    com.vpegs.ms.core.LinkParser.parseSubscriptionBody(
+                        linkText,
+                        BuiltInConfigSources.SUB_ID,
+                        BuiltInConfigSources.SUB_NAME
+                    )
+                }
                 val seen = HashSet<String>()
                 val unique = parsed.filter { item ->
-                    val key = "${item.node.protocol}|${item.node.address}|${item.node.port}|${item.node.name}"
+                    val key = "${item.node.protocol}|${item.node.address}|${item.node.port}"
                     seen.add(key)
                 }.take(BuiltInConfigSources.MAX_SERVERS)
 
                 unique.forEach { configByServerId[it.node.id] = it.configJson }
                 val nodes = unique.map { it.node.copy(subscriptionId = BuiltInConfigSources.SUB_ID) }
 
-                // Replace only builtin servers
                 val oldIds = servers.filter { it.subscriptionId == BuiltInConfigSources.SUB_ID }.map { it.id }.toSet()
                 oldIds.forEach { configByServerId.remove(it) }
                 servers = servers.filter { it.subscriptionId != BuiltInConfigSources.SUB_ID } + nodes
 
                 subscriptions = subscriptions.map {
                     if (it.id == BuiltInConfigSources.SUB_ID) it.copy(
+                        url = BuiltInConfigSources.SUB_URL,
                         serversCount = nodes.size,
                         lastUpdated = System.currentTimeMillis(),
-                        announce = "GitHub free · ${nodes.size} серверов · качество не гарантируется"
+                        announce = "VpEgs Config · ${nodes.size} серверов"
                     ) else it
                 }
                 if (selectedServer == null && nodes.isNotEmpty()) {
@@ -1796,17 +1804,59 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                 } else {
                     persist()
                 }
-                workStatus = "VpEgs Config: ${nodes.size} серверов"
+                workStatus = if (nodes.isEmpty()) "VpEgs Config: 0 серверов" else "VpEgs Config: ${nodes.size} серверов"
                 workProgress = 1f
-                delay(1200)
+                delay(1000)
                 workStatus = ""
                 workProgress = 0f
             } catch (e: Exception) {
                 e.printStackTrace()
-                workStatus = "Ошибка VpEgs Config: ${e.message?.take(40)}"
+                workStatus = "Ошибка VpEgs Config: ${e.message?.take(48)}"
                 workProgress = 0f
             }
         }
+    }
+
+    /** Normalize remote body to newline-separated share links. */
+    private fun extractBuiltinLinks(body: String): String {
+        val trimmed = body.trim()
+        if (trimmed.startsWith("{")) {
+            try {
+                val obj = org.json.JSONObject(trimmed)
+                val arr = obj.optJSONArray("configs")
+                    ?: obj.optJSONArray("servers")
+                    ?: obj.optJSONArray("list")
+                if (arr != null) {
+                    val sb = StringBuilder(arr.length() * 64)
+                    for (i in 0 until arr.length()) {
+                        val s = arr.optString(i).trim()
+                        if (s.isNotEmpty()) {
+                            if (sb.isNotEmpty()) sb.append('\n')
+                            sb.append(s)
+                        }
+                    }
+                    if (sb.isNotEmpty()) return sb.toString()
+                }
+            } catch (_: Exception) { /* fall through */ }
+        }
+        if (trimmed.startsWith("[")) {
+            try {
+                val arr = org.json.JSONArray(trimmed)
+                // array of links or objects
+                val sb = StringBuilder()
+                for (i in 0 until arr.length()) {
+                    val s = arr.optString(i).trim()
+                    if (s.startsWith("vless://") || s.startsWith("vmess://") ||
+                        s.startsWith("trojan://") || s.startsWith("ss://")
+                    ) {
+                        if (sb.isNotEmpty()) sb.append('\n')
+                        sb.append(s)
+                    }
+                }
+                if (sb.isNotEmpty()) return sb.toString()
+            } catch (_: Exception) { }
+        }
+        return trimmed
     }
 
 
