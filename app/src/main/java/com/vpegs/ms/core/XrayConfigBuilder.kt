@@ -4,23 +4,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Builds a minimal Xray config JSON that:
- * - opens SOCKS inbound on 127.0.0.1:10808 (optional when using TUN fd)
- * - routes all traffic via the given outbound
- * - uses TUN when tunFd path is used by core (StartLoop with fd)
+ * Builds minimal Xray configs. Sanitizes share-link quirks that break core
+ * ("failed to build outbound config with tag proxy").
  */
 object XrayConfigBuilder {
 
     fun build(outbound: JSONObject, dns: List<String> = listOf("1.1.1.1", "8.8.8.8")): String {
         val root = JSONObject()
         root.put("log", JSONObject().put("loglevel", "warning"))
+        root.put("dns", JSONObject().put("servers", JSONArray(dns)))
 
-        val dnsObj = JSONObject()
-        dnsObj.put("servers", JSONArray(dns))
-        root.put("dns", dnsObj)
-
-        // When using StartLoop(config, tunFd), core attaches to TUN.
-        // Still provide socks inbound for diagnostics.
         val inbounds = JSONArray()
         inbounds.put(
             JSONObject()
@@ -29,16 +22,17 @@ object XrayConfigBuilder {
                 .put("listen", "127.0.0.1")
                 .put("protocol", "socks")
                 .put("settings", JSONObject().put("udp", true))
-                .put("sniffing", JSONObject()
-                    .put("enabled", true)
-                    .put("destOverride", JSONArray(listOf("http", "tls", "quic")))
+                .put(
+                    "sniffing",
+                    JSONObject()
+                        .put("enabled", true)
+                        .put("destOverride", JSONArray(listOf("http", "tls", "quic")))
                 )
         )
         root.put("inbounds", inbounds)
 
         val outbounds = JSONArray()
-        outbounds.put(outbound)
-        // freedom / blackhole fallbacks
+        outbounds.put(sanitizeOutbound(outbound))
         outbounds.put(
             JSONObject()
                 .put("tag", "direct")
@@ -53,20 +47,142 @@ object XrayConfigBuilder {
         )
         root.put("outbounds", outbounds)
 
-        val routing = JSONObject()
-        routing.put("domainStrategy", "AsIs")
-        routing.put(
-            "rules",
-            JSONArray().put(
-                JSONObject()
-                    .put("type", "field")
-                    .put("outboundTag", "proxy")
-                    .put("network", "tcp,udp")
-            )
+        root.put(
+            "routing",
+            JSONObject()
+                .put("domainStrategy", "AsIs")
+                .put(
+                    "rules",
+                    JSONArray().put(
+                        JSONObject()
+                            .put("type", "field")
+                            .put("outboundTag", "proxy")
+                            .put("network", "tcp,udp")
+                    )
+                )
         )
-        root.put("routing", routing)
-
         return root.toString()
+    }
+
+    /**
+     * Drop fields that AndroidLibXrayLite often rejects.
+     */
+    fun sanitizeOutbound(raw: JSONObject): JSONObject {
+        val o = JSONObject(raw.toString())
+        o.put("tag", "proxy")
+        val proto = o.optString("protocol").lowercase()
+
+        when (proto) {
+            "vless" -> sanitizeVless(o)
+            "vmess" -> sanitizeVmess(o)
+            "trojan" -> { /* mostly fine */ }
+            "shadowsocks" -> sanitizeSs(o)
+        }
+
+        // Never pass mux/sockopt that some cores reject
+        o.remove("mux")
+        o.remove("sockopt")
+        return o
+    }
+
+    private fun sanitizeVless(o: JSONObject) {
+        val settings = o.optJSONObject("settings") ?: return
+        val vnext = settings.optJSONArray("vnext") ?: return
+        for (i in 0 until vnext.length()) {
+            val node = vnext.optJSONObject(i) ?: continue
+            val users = node.optJSONArray("users") ?: continue
+            for (j in 0 until users.length()) {
+                val u = users.optJSONObject(j) ?: continue
+                // Standard VLESS encryption is only "none"
+                val enc = u.optString("encryption", "none")
+                if (enc != "none") u.put("encryption", "none")
+                // flow only valid with vision + tls/reality + tcp
+                val flow = u.optString("flow")
+                if (flow.isNotBlank() && !flow.contains("vision")) {
+                    u.remove("flow")
+                }
+            }
+        }
+
+        val stream = o.optJSONObject("streamSettings") ?: return
+        var network = stream.optString("network", "tcp").ifBlank { "tcp" }
+        // normalize aliases
+        if (network == "h2" || network == "http") network = "tcp"
+        stream.put("network", network)
+
+        var security = stream.optString("security", "none").ifBlank { "none" }
+        if (security !in setOf("none", "tls", "reality")) security = "none"
+        stream.put("security", security)
+
+        // flow requires tcp + (tls|reality)
+        if (security == "none" || network != "tcp") {
+            val vnext2 = settings.optJSONArray("vnext")
+            if (vnext2 != null) {
+                for (i in 0 until vnext2.length()) {
+                    val users = vnext2.optJSONObject(i)?.optJSONArray("users") ?: continue
+                    for (j in 0 until users.length()) {
+                        users.optJSONObject(j)?.remove("flow")
+                    }
+                }
+            }
+        }
+
+        if (security == "reality") {
+            val rs = stream.optJSONObject("realitySettings") ?: JSONObject()
+            // Without publicKey Reality cannot build
+            if (rs.optString("publicKey").isBlank()) {
+                stream.put("security", "none")
+                stream.remove("realitySettings")
+            } else {
+                // fingerprint defaults
+                if (rs.optString("fingerprint").isBlank()) rs.put("fingerprint", "chrome")
+                stream.put("realitySettings", rs)
+            }
+        }
+
+        if (security == "tls") {
+            val ts = stream.optJSONObject("tlsSettings") ?: JSONObject()
+            if (ts.optString("fingerprint").isBlank() && ts.has("fingerprint")) {
+                // leave empty ok
+            }
+            stream.put("tlsSettings", ts)
+        }
+
+        // Clean network-specific junk
+        when (network) {
+            "ws" -> {
+                stream.remove("grpcSettings")
+                stream.remove("tcpSettings")
+            }
+            "grpc" -> {
+                stream.remove("wsSettings")
+                stream.remove("tcpSettings")
+            }
+            else -> {
+                stream.remove("wsSettings")
+                stream.remove("grpcSettings")
+            }
+        }
+        o.put("streamSettings", stream)
+        o.put("settings", settings)
+    }
+
+    private fun sanitizeVmess(o: JSONObject) {
+        val stream = o.optJSONObject("streamSettings") ?: return
+        var network = stream.optString("network", "tcp").ifBlank { "tcp" }
+        if (network == "h2") network = "ws"
+        stream.put("network", network)
+        o.put("streamSettings", stream)
+    }
+
+    private fun sanitizeSs(o: JSONObject) {
+        val settings = o.optJSONObject("settings") ?: return
+        val servers = settings.optJSONArray("servers") ?: return
+        for (i in 0 until servers.length()) {
+            val s = servers.optJSONObject(i) ?: continue
+            // method required
+            if (s.optString("method").isBlank()) s.put("method", "chacha20-ietf-poly1305")
+        }
     }
 
     fun vlessOutbound(
@@ -86,27 +202,43 @@ object XrayConfigBuilder {
         host: String = "",
         alpn: String = ""
     ): JSONObject {
+        // Share-links sometimes put PQ/hybrid garbage into encryption=
+        val enc = if (encryption == "none" || encryption.isBlank()) "none" else "none"
+        var net = network.ifBlank { "tcp" }.lowercase()
+        if (net == "h2" || net == "http") net = "tcp"
+        var sec = security.ifBlank { "none" }.lowercase()
+        if (sec !in setOf("none", "tls", "reality")) sec = "none"
+
+        // vision flow only with tls/reality + tcp
+        val useFlow = flow.contains("vision") && net == "tcp" && (sec == "tls" || sec == "reality")
+
+        // Reality without key → fall back to none (better than crash)
+        if (sec == "reality" && pbk.isBlank()) sec = "none"
+
         val user = JSONObject()
             .put("id", uuid)
-            .put("encryption", encryption.ifBlank { "none" })
-        if (flow.isNotBlank()) user.put("flow", flow)
+            .put("encryption", enc)
+        if (useFlow) user.put("flow", if (flow.contains("vision")) "xtls-rprx-vision" else flow)
 
         val settings = JSONObject()
-            .put("vnext", JSONArray().put(
-                JSONObject()
-                    .put("address", address)
-                    .put("port", port)
-                    .put("users", JSONArray().put(user))
-            ))
+            .put(
+                "vnext",
+                JSONArray().put(
+                    JSONObject()
+                        .put("address", address)
+                        .put("port", port)
+                        .put("users", JSONArray().put(user))
+                )
+            )
 
-        val stream = JSONObject().put("network", network.ifBlank { "tcp" })
-        when (security) {
+        val stream = JSONObject().put("network", net)
+        when (sec) {
             "reality" -> {
                 stream.put("security", "reality")
                 val rs = JSONObject()
                 if (sni.isNotBlank()) rs.put("serverName", sni)
-                if (fp.isNotBlank()) rs.put("fingerprint", fp)
-                if (pbk.isNotBlank()) rs.put("publicKey", pbk)
+                rs.put("fingerprint", fp.ifBlank { "chrome" })
+                rs.put("publicKey", pbk)
                 if (sid.isNotBlank()) rs.put("shortId", sid)
                 if (spx.isNotBlank()) rs.put("spiderX", spx)
                 stream.put("realitySettings", rs)
@@ -116,28 +248,36 @@ object XrayConfigBuilder {
                 val ts = JSONObject()
                 if (sni.isNotBlank()) ts.put("serverName", sni)
                 if (fp.isNotBlank()) ts.put("fingerprint", fp)
-                if (alpn.isNotBlank()) ts.put("alpn", JSONArray(alpn.split(",")))
+                if (alpn.isNotBlank()) {
+                    ts.put("alpn", JSONArray(alpn.split(",").map { it.trim() }.filter { it.isNotEmpty() }))
+                }
+                // allowInsecure helps broken free nodes
+                ts.put("allowInsecure", true)
                 stream.put("tlsSettings", ts)
             }
             else -> stream.put("security", "none")
         }
-        if (network == "ws") {
+        if (net == "ws") {
             val ws = JSONObject()
-            if (path.isNotBlank()) ws.put("path", path)
+            // path often polluted with "?Telegram…" — keep only path part
+            val cleanPath = path.substringBefore("?").ifBlank { "/" }
+            ws.put("path", cleanPath)
             if (host.isNotBlank()) ws.put("headers", JSONObject().put("Host", host))
             stream.put("wsSettings", ws)
         }
-        if (network == "grpc") {
+        if (net == "grpc") {
             val grpc = JSONObject()
-            if (path.isNotBlank()) grpc.put("serviceName", path)
+            if (path.isNotBlank()) grpc.put("serviceName", path.substringBefore("?"))
             stream.put("grpcSettings", grpc)
         }
 
-        return JSONObject()
-            .put("tag", "proxy")
-            .put("protocol", "vless")
-            .put("settings", settings)
-            .put("streamSettings", stream)
+        return sanitizeOutbound(
+            JSONObject()
+                .put("tag", "proxy")
+                .put("protocol", "vless")
+                .put("settings", settings)
+                .put("streamSettings", stream)
+        )
     }
 
     fun trojanOutbound(
@@ -157,16 +297,23 @@ object XrayConfigBuilder {
             )
         )
         val stream = JSONObject()
-            .put("network", network)
-            .put("security", "tls")
-            .put("tlsSettings", JSONObject().apply {
-                if (sni.isNotBlank()) put("serverName", sni)
-            })
-        return JSONObject()
-            .put("tag", "proxy")
-            .put("protocol", "trojan")
-            .put("settings", settings)
-            .put("streamSettings", stream)
+            .put("network", network.ifBlank { "tcp" })
+            .put("security", if (sni.isNotBlank()) "tls" else "none")
+        if (sni.isNotBlank()) {
+            stream.put(
+                "tlsSettings",
+                JSONObject()
+                    .put("serverName", sni)
+                    .put("allowInsecure", true)
+            )
+        }
+        return sanitizeOutbound(
+            JSONObject()
+                .put("tag", "proxy")
+                .put("protocol", "trojan")
+                .put("settings", settings)
+                .put("streamSettings", stream)
+        )
     }
 
     fun vmessOutbound(
@@ -180,37 +327,45 @@ object XrayConfigBuilder {
         host: String = "",
         tls: String = ""
     ): JSONObject {
-        val user = JSONObject()
-            .put("id", uuid)
-            .put("alterId", alterId)
-            .put("security", security)
         val settings = JSONObject().put(
             "vnext",
             JSONArray().put(
                 JSONObject()
                     .put("address", address)
                     .put("port", port)
-                    .put("users", JSONArray().put(user))
+                    .put(
+                        "users",
+                        JSONArray().put(
+                            JSONObject()
+                                .put("id", uuid)
+                                .put("alterId", alterId)
+                                .put("security", security.ifBlank { "auto" })
+                        )
+                    )
             )
         )
-        val stream = JSONObject().put("network", network)
-        if (tls == "tls") {
+        val stream = JSONObject().put("network", network.ifBlank { "tcp" })
+        if (tls == "tls" || tls == "true") {
             stream.put("security", "tls")
-            stream.put("tlsSettings", JSONObject().apply {
-                if (host.isNotBlank()) put("serverName", host)
-            })
+            val ts = JSONObject().put("allowInsecure", true)
+            if (host.isNotBlank()) ts.put("serverName", host)
+            stream.put("tlsSettings", ts)
+        } else {
+            stream.put("security", "none")
         }
         if (network == "ws") {
-            stream.put("wsSettings", JSONObject().apply {
-                if (path.isNotBlank()) put("path", path)
-                if (host.isNotBlank()) put("headers", JSONObject().put("Host", host))
-            })
+            val ws = JSONObject()
+            ws.put("path", path.substringBefore("?").ifBlank { "/" })
+            if (host.isNotBlank()) ws.put("headers", JSONObject().put("Host", host))
+            stream.put("wsSettings", ws)
         }
-        return JSONObject()
-            .put("tag", "proxy")
-            .put("protocol", "vmess")
-            .put("settings", settings)
-            .put("streamSettings", stream)
+        return sanitizeOutbound(
+            JSONObject()
+                .put("tag", "proxy")
+                .put("protocol", "vmess")
+                .put("settings", settings)
+                .put("streamSettings", stream)
+        )
     }
 
     fun shadowsocksOutbound(
@@ -225,13 +380,15 @@ object XrayConfigBuilder {
                 JSONObject()
                     .put("address", address)
                     .put("port", port)
-                    .put("method", method)
+                    .put("method", method.ifBlank { "chacha20-ietf-poly1305" })
                     .put("password", password)
             )
         )
-        return JSONObject()
-            .put("tag", "proxy")
-            .put("protocol", "shadowsocks")
-            .put("settings", settings)
+        return sanitizeOutbound(
+            JSONObject()
+                .put("tag", "proxy")
+                .put("protocol", "shadowsocks")
+                .put("settings", settings)
+        )
     }
 }

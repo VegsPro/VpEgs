@@ -227,7 +227,8 @@ object LinkParser {
             val network = params["type"] ?: "tcp"
             val outbound = XrayConfigBuilder.vlessOutbound(
                 address = host, port = port, uuid = uuid,
-                flow = params["flow"] ?: "", encryption = params["encryption"] ?: "none",
+                flow = params["flow"] ?: "",
+                encryption = "none", // free links often put garbage in encryption=
                 network = network, security = security,
                 sni = params["sni"] ?: params["host"] ?: "", fp = params["fp"] ?: "",
                 pbk = params["pbk"] ?: "", sid = params["sid"] ?: "", spx = params["spx"] ?: "",

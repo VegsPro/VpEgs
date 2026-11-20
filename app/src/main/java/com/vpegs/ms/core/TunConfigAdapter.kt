@@ -41,7 +41,7 @@ object TunConfigAdapter {
             val tag = o.optString("tag")
             val proto = o.optString("protocol").lowercase()
             if (proto !in supported) continue
-            val copy = JSONObject(o.toString())
+            val copy = XrayConfigBuilder.sanitizeOutbound(JSONObject(o.toString()))
             if (!foundProxy && (tag == "proxy" || cleaned.length() == 0)) {
                 copy.put("tag", "proxy")
                 foundProxy = true
@@ -52,7 +52,7 @@ object TunConfigAdapter {
         }
         if (cleaned.length() == 0) {
             val o = srcOutbounds.optJSONObject(0) ?: return rawJson
-            val copy = JSONObject(o.toString())
+            val copy = XrayConfigBuilder.sanitizeOutbound(JSONObject(o.toString()))
             copy.put("tag", "proxy")
             cleaned.put(copy)
         }
