@@ -69,7 +69,9 @@ class VpEgsVpnService : VpnService() {
     }
 
     private fun startVpn(serverName: String, configJson: String) {
-        if (isConnected) stopVpnInternal()
+        // Always tear down previous core — stale instance keeps tag "proxy"
+        try { stopVpnInternal() } catch (_: Exception) {}
+        try { Thread.sleep(150) } catch (_: Exception) {}
 
         ensureGeoAssets()
         val files = filesDir.absolutePath

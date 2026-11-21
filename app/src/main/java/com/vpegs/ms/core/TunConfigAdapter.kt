@@ -34,28 +34,26 @@ object TunConfigAdapter {
 
         val supported = setOf("vless", "vmess", "trojan", "shadowsocks")
         val cleaned = JSONArray()
-        var foundProxy = false
-
+        // Exactly ONE outbound with tag "proxy" — duplicates crash core
+        // ("existing tag found: proxy")
+        var proxyOutbound: JSONObject? = null
         for (i in 0 until srcOutbounds.length()) {
             val o = srcOutbounds.optJSONObject(i) ?: continue
-            val tag = o.optString("tag")
             val proto = o.optString("protocol").lowercase()
             if (proto !in supported) continue
-            val copy = XrayConfigBuilder.sanitizeOutbound(JSONObject(o.toString()))
-            if (!foundProxy && (tag == "proxy" || cleaned.length() == 0)) {
-                copy.put("tag", "proxy")
-                foundProxy = true
-                cleaned.put(copy)
-            } else if (tag != "proxy") {
-                cleaned.put(copy)
-            }
-        }
-        if (cleaned.length() == 0) {
-            val o = srcOutbounds.optJSONObject(0) ?: return rawJson
+            val tag = o.optString("tag")
             val copy = XrayConfigBuilder.sanitizeOutbound(JSONObject(o.toString()))
             copy.put("tag", "proxy")
-            cleaned.put(copy)
+            if (proxyOutbound == null || tag == "proxy") {
+                proxyOutbound = copy
+            }
         }
+        if (proxyOutbound == null) {
+            val o = srcOutbounds.optJSONObject(0) ?: return rawJson
+            proxyOutbound = XrayConfigBuilder.sanitizeOutbound(JSONObject(o.toString()))
+            proxyOutbound!!.put("tag", "proxy")
+        }
+        cleaned.put(proxyOutbound)
 
         cleaned.put(
             JSONObject().put("tag", "direct").put("protocol", "freedom")

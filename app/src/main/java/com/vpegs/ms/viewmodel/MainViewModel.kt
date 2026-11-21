@@ -1724,15 +1724,19 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                 name = BuiltInConfigSources.SUB_NAME,
                 url = BuiltInConfigSources.SUB_URL,
                 autoUpdate = true,
-                announce = "VpEgs Config · единый список серверов"
+                announce = "VpEgs Config ⭐ · единый список серверов"
             )
             subscriptions = listOf(sub) + subscriptions
             persist()
         } else {
             // Migrate old GitHub multi-source URL → single endpoint
             subscriptions = subscriptions.map {
-                if (it.id == BuiltInConfigSources.SUB_ID && it.url != BuiltInConfigSources.SUB_URL)
-                    it.copy(url = BuiltInConfigSources.SUB_URL, announce = "VpEgs Config · единый список серверов")
+                if (it.id == BuiltInConfigSources.SUB_ID)
+                    it.copy(
+                        name = BuiltInConfigSources.SUB_NAME,
+                        url = BuiltInConfigSources.SUB_URL,
+                        announce = it.announce.ifBlank { "VpEgs Config ⭐ · единый список серверов" }
+                    )
                 else it
             }
         }
@@ -1750,14 +1754,15 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                     .followRedirects(true)
                     .build()
                 val body = withContext(Dispatchers.IO) {
+                    val url = BuiltInConfigSources.resolveDownloadUrl(client)
                     val req = okhttp3.Request.Builder()
-                        .url(BuiltInConfigSources.SUB_URL)
+                        .url(url)
                         .header("User-Agent", "VpEgs/${BuildConfig.VERSION_NAME}")
                         .header("Accept", "application/json, text/plain, */*")
                         .build()
                     client.newCall(req).execute().use { resp ->
                         if (!resp.isSuccessful) {
-                            throw IllegalStateException("HTTP ${resp.code}")
+                            throw IllegalStateException("HTTP ${resp.code} @ $url")
                         }
                         resp.body?.string().orEmpty()
                     }
@@ -1796,7 +1801,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                         url = BuiltInConfigSources.SUB_URL,
                         serversCount = nodes.size,
                         lastUpdated = System.currentTimeMillis(),
-                        announce = "VpEgs Config · ${nodes.size} серверов"
+                        announce = "VpEgs Config ⭐ · ${nodes.size} серверов"
                     ) else it
                 }
                 if (selectedServer == null && nodes.isNotEmpty()) {
@@ -1804,7 +1809,7 @@ fun updateServerSort(s: ServerSort) { serverSort = s }
                 } else {
                     persist()
                 }
-                workStatus = if (nodes.isEmpty()) "VpEgs Config: 0 серверов" else "VpEgs Config: ${nodes.size} серверов"
+                workStatus = if (nodes.isEmpty()) "VpEgs Config ⭐: 0" else "VpEgs Config ⭐: ${nodes.size} серверов"
                 workProgress = 1f
                 delay(1000)
                 workStatus = ""
